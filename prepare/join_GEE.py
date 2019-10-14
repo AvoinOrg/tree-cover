@@ -12,7 +12,29 @@ import json
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 
-def join_data():
+regions = ["region_Australia", "region_CentralAsia", "region_EastSouthAmerica", 
+           "region_Europe", "region_HornAfrica", "region_MiddleEast", 
+           "region_NorthAmerica", "region_NorthernAfrica", "region_Sahel", 
+           "region_SouthernAfrica", "region_SouthWestAsia", "region_WestSouthAmerica"]
+
+columns = ['system:index', 'B1', 'B10', 'B11', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7',
+           'pixel_qa', 'radsat_qa', 'sr_aerosol', '.geo']
+
+
+def join_data_by_region_and_row(year):
+    """
+    expected structure: in data folder, have the splits by region in `by_region` and 
+    the year-df exports in `year`.
+    """
+    df_list = []
+    for region in regions:
+        reg_df = pd.read_csv(f'data/by_region/{region}.csv')
+        sat_df = pd.read_csv(f'data/{year}/export_{region}_{year}.csv').reindex(columns, axis = 'columns')
+        df_list.append(reg_df.merge(sat_df, how='inner', left_index=True, right_index=True))
+    return pd.concat(df_list, ignore_index=True)
+    
+
+def join_data_by_location():
     gee_data = pd.read_csv('../data/data.csv')
     paper_data = pd.read_csv('../data/bastin_db_cleaned.csv')
     
@@ -52,6 +74,10 @@ def train_dump_forest(joint_df):
     rf.fit(X_train, y_train)
     print(rf.score(X_test, y_test))
 
-joint_df = join_data()
-train_dump_forest(joint_df)
+#joint_df = join_data_by_location()
+#train_dump_forest(joint_df)
+join_data_by_region_and_row(2013).to_csv('data/2013_full.csv')
+join_data_by_region_and_row(2014).to_csv('data/2014_full.csv')
+join_data_by_region_and_row(2015).to_csv('data/2015_full.csv')
+
 
