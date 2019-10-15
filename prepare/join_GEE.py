@@ -30,19 +30,21 @@ def join_data_by_region_and_row(year):
     for region in regions:
         reg_df = pd.read_csv(f'data/by_region/{region}.csv')
         sat_df = pd.read_csv(f'data/{year}/export_{region}_{year}.csv').reindex(columns, axis = 'columns')
-        df_list.append(reg_df.merge(sat_df, how='inner', left_index=True, right_index=True))
+        # merged = reg_df.merge(sat_df, how='inner', left_index=True, right_index=True)
+        merged = join_data_by_location(sat_df, reg_df)
+        df_list.append(merged)
     return pd.concat(df_list, ignore_index=True)
     
 
-def join_data_by_location():
-    gee_data = pd.read_csv('../data/data.csv')
-    paper_data = pd.read_csv('../data/bastin_db_cleaned.csv')
+def join_data_by_location(gee_data, paper_data):
+    #gee_data = pd.read_csv(gee_file)
+    #paper_data = pd.read_csv(paper_file)
     
     # oops - values differ slightly, eg -22.65348 vs -22.653845 
     # and 113.87942859999998 vs 113.87943003678768
     gee_data.drop(labels='system:index', axis=1, inplace=True)
     gee_data['longitude'] = gee_data.apply(lambda row: json.loads(row['.geo'])['coordinates'][0], axis=1)
-    gee_data['latitude'] = gee_data.apply(lambda row: json.loads(row['.geo'])['coordinates'][1], axis=1)
+    gee_data['latitude'] =  gee_data.apply(lambda row: json.loads(row['.geo'])['coordinates'][1], axis=1)
     
     gee_indices = []
     paper_indices = []
