@@ -48,7 +48,15 @@ def join_data_by_location(gee_data, paper_data):
     
     gee_indices = []
     paper_indices = []
+    curr_lon = None
+    curr_lat = None
+    curr_idx = None
     for i, lon, lat in gee_data[['longitude', 'latitude']].itertuples():
+        if curr_lon == lon and curr_lat == lat:
+            # speedup for sequential data
+            gee_indices.append(i)
+            paper_indices.append(curr_idx)
+            continue
         lon_close = np.isclose(lon, paper_data['longitude'])
         lat_close = np.isclose(lat, paper_data['latitude'])
         match = lon_close & lat_close
@@ -58,7 +66,10 @@ def join_data_by_location(gee_data, paper_data):
             print(f'{i} - no match found!')
         else:
             gee_indices.append(i)
-            paper_indices.append(paper_data.index[match][0])
+            curr_idx = paper_data.index[match][0]
+            paper_indices.append(curr_idx)
+        if i % 10000 == 0:
+            print(f'{i} ...')
     index_df = pd.DataFrame(data={'gee': gee_indices, 'paper': paper_indices})
     gee_close =   pd.merge(index_df, gee_data  , left_on='gee' , right_index=True).reindex(columns=gee_data.columns)
     paper_close = pd.merge(index_df, paper_data, left_on='paper', right_index=True).reindex(columns=paper_data.columns)
@@ -76,10 +87,11 @@ def train_dump_forest(joint_df):
     rf.fit(X_train, y_train)
     print(rf.score(X_test, y_test))
 
-#joint_df = join_data_by_location()
-#train_dump_forest(joint_df)
-join_data_by_region_and_row(2013).to_csv('data/2013_full.csv')
-join_data_by_region_and_row(2014).to_csv('data/2014_full.csv')
-join_data_by_region_and_row(2015).to_csv('data/2015_full.csv')
+def run():
+    #joint_df = join_data_by_location()
+    #train_dump_forest(joint_df)
+    join_data_by_region_and_row(2013).to_csv('data/2013_full.csv')
+    join_data_by_region_and_row(2014).to_csv('data/2014_full.csv')
+    join_data_by_region_and_row(2015).to_csv('data/2015_full.csv')
 
 
