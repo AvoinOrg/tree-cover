@@ -69,5 +69,6 @@ def main():
     # Lets not overwrite our dummy data just yet.
     # db.to_csv('data/db.csv', sep=',') 
 
-main()
+if __name__ == '__main__':
+    main()
 
