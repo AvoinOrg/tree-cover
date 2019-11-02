@@ -30,8 +30,8 @@ def train(features, targets, gridsearch=False):
     X, t = features, targets
     params = {'n_estimators': 2000, 'max_depth': 5, 'min_samples_split': 10,
           'learning_rate': 0.1, 'loss': 'ls'}
-    cat = OneHotEncoder()
-    X = cat.fit_transform(X)
+    #cat = OneHotEncoder()
+    #X = cat.fit_transform(X)
     if gridsearch==True:
         # Hyperparameter tuning
         pass
@@ -43,7 +43,7 @@ def train(features, targets, gridsearch=False):
 
 def predict(X, model):
     cat = OneHotEncoder()
-    X = cat.fit_transform(X)
+    #X = cat.fit_transform(X)
     if model == None:
         p = np.random.uniform(size = X.shape[0])
     elif model == 'load':
@@ -56,12 +56,11 @@ def predict(X, model):
 def main():
     os.chdir('/home/dario/_py/tree-cover')
     path = 'data/db.csv'
-    feat = ['dryland_assessment_region', 'Aridity_zone', 'land_use_category', 
-            'tree_cover', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 
+    feat = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 
             'B11', 'sr_aerosol', 'pixel_qa', 'radsat_qa']
     t, X = load_data(path=path, cols=feat)
-    #model = train(features=X, targets=t)
-    p = predict(X, model='load')
+    model = train(features=X, targets=t)
+    p = predict(X, model=model)
     print(f'RMSE in %: {round(np.sqrt(sum((p-t)**2)/len(p))*100,4)}')
 
 if __name__ == '__main__':
