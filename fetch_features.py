@@ -24,14 +24,14 @@ def not_in_db(df, db):
     """ Takes the target data frame and the existing database object.
         Returns the splitted dataframe for existing and non-existant entries.
     """
-    df_ex = df[~(df[['longitude', 'latitude']]
-            .isin(db[['longitude', 'latitude']]))
-        .any(axis=1)]
-    df_in = df[(df[['longitude', 'latitude']]
-            .isin(db[['longitude', 'latitude']]))
-        .any(axis=1)]
+    df_in = df[df.set_index(['longitude', 'latitude'])
+               .index.isin(db.set_index(['longitude', 'latitude'])
+                           .index)]
+    df_ex = df[~df.set_index(['longitude', 'latitude'])
+               .index.isin(db.set_index(['longitude', 'latitude'])
+                           .index)]
     df_ex = df_ex.reset_index()
-    df_in = df_ex.reset_index()
+    df_in = df_in.reset_index()
     return df_ex, df_in
 
 def extend_df_landsat(df, chunk_size = 2):
