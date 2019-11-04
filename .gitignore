@@ -1,6 +1,7 @@
 # Our stuff
 .ipynb_checkpoints
 .spyproject/
+.idea/
 
 data/*.csv
 data/*.idx
