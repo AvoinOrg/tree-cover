@@ -2,13 +2,14 @@
 import ee
 import pandas as pd
 import time
+import os
 ee.Initialize()
 
 
 data_full = pd.read_csv('data/bastin_db_cleaned.csv')
 
-start='2018-12-01'
-end='2019-02-28'
+start='2017-06-01'
+end='2019-08-31'
 area = 'Australia'
 collection="COPERNICUS/S2_SR"
 df = data_full[data_full['dryland_assessment_region'] == area]
@@ -17,6 +18,7 @@ lon_counts = dict()
 lat_counts = dict()
 retrieved = None
 t_start = time.time()
+saved = []
 
 def maskS2clouds(image):
     qa = image.select('QA60')
@@ -31,8 +33,8 @@ def maskS2clouds(image):
     return image.updateMask(mask1).updateMask(mask2).divide(10000)
 
 
-# todo: cloud mask? Nah better filter later.
-for i in range(300,df.shape[0]):
+# todo: cloud mask? Nah better filter later and resample single entries with nonzero clouds or whole entries
+for i in range(3000,df.shape[0]):
     
     #iis=list(range((i-1)*10, i*10))
     #boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -68,15 +70,23 @@ for i in range(300,df.shape[0]):
     except Exception as ex:
         print('Couldnt retrieve', ex)
         
-    if i % 1000 == 0 and i != 0:
-        print(f'{i}: sleeping a while after fetching 5000.')
-        print(f'Fetched data in {time.time()-start} seconds')
-        start = time.time()
-        retrieved.to_csv(f'data/sentinel_{start}-{end}_{i}.csv')
+    if i-1 % 1000 == 0:
+        print(f'{i}: sleeping a while after fetching 1000.')
+        print(f'Fetched data in {(time.time()-t_start)/60} minutes')
+        print('lon counts:', lon_counts)
+        print('lat counts:', lat_counts)
+        t_start = time.time()
+        f_name = f'data/sentinel_{start}-{end}_{i}.csv'
+        if os.path.isfile(f_name):
+            print(f_name, ' already exists! not overwriting.')
+            saved.append(retrieved)
+        else:
+            retrieved.to_csv(f_name)
         retrieved = None
-        time.sleep(120)
+        time.sleep(60)
 
-# 689 secs for 300 data points
-print(f'took {time.time()-t_start} seconds to retrieve data.')
+print(f'Fetched data in {(time.time()-t_start)/60} minutes')
 print('lon counts:', lon_counts)
 print('lat counts:', lat_counts)
+retrieved.to_csv(f'data/sentinel_{start}-{end}_{i}.csv')
+print('\a\a\a') # done now

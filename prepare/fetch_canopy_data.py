@@ -41,5 +41,6 @@ for i in range(10000, df.shape[0]):
         print('Couldnt retrieve', ex)
 
 print('all errors: ', errs)
+# all errors:  [15529, 21458]
 df.to_csv(f'data/canopy.csv')
 
