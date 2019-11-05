@@ -68,7 +68,7 @@ def main():
     if do_train:
         t_start = time.time()
         model = train(X_train, y_train)
-        print(f'training model took {(t_start-time.time())/60} minutes')
+        print(f'training model took {(time.time()-t_start)/60} minutes')
         p = predict(X_test, model=model)
     else:
         p = predict(X_test, model='load')
