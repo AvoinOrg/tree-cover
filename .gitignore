@@ -2,6 +2,7 @@
 .ipynb_checkpoints
 .spyproject/
 .idea/
+model.joblib.bk
 
 data/*.csv
 data/*.idx

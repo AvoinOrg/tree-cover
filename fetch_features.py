@@ -34,6 +34,7 @@ def not_in_db(df, db):
     df_in = df_in.reset_index()
     return df_ex, df_in
 
+
 def extend_df_landsat(df, chunk_size = 2):
     """ Needs generalization to incorporate multiple data sets.
         Currently adds landsat data.
@@ -57,6 +58,7 @@ def extend_df_landsat(df, chunk_size = 2):
         i += min(chunk_size, max(len(df)-1-i,1))
     return df
 
+
 def single_point_populater(df, prep_method, aggregate_method,verbose=False):
     """ Takes single points of an arriving dataframe for a given fetching target.
         Prepares the data for a given method of preparation.
@@ -74,12 +76,14 @@ def single_point_populater(df, prep_method, aggregate_method,verbose=False):
                info['cols']] = [values]
     return df
 
+
 def landsat_aggregate_method(fetched_data, lon, lat, columns,verbose=False):
     if verbose: print('Aggregating data')
     dist = ((fetched_data.longitude - lon)**2 + 
             (fetched_data.latitude - lat)**2)
     values = fetched_data.loc[dist[dist == dist.min()].index, columns].median()
     return values
+
 
 def landsat_prepare_method(df, verbose=False):
     """ Takes any dataframe, gives it the respective columns 
@@ -97,6 +101,7 @@ def landsat_prepare_method(df, verbose=False):
     for _ in info['cols']:
         df[_] = None
     return df, info
+
 
 def single_fetch(lon, lat, start='2015-01-01', end='2015-12-31',
                  collection='LANDSAT/LC08/C01/T1_SR', verbose=False):
@@ -132,6 +137,7 @@ def main():
     db.append(df_ex)
     # Lets not overwrite our dummy data just yet.
     # db.to_csv('data/db.csv', sep=',') 
+
 
 if __name__ == '__main__':
     main()
