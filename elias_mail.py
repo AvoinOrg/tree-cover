@@ -4,13 +4,12 @@ import pandas as pd
 import backoff
 import itertools
 import json
-#import pickle
-#import time
-@backoff.on_exception(backoff.expo,
-                      ee.EEException,
-                      max_tries=2)
+
+# import pickle
+# import time
+@backoff.on_exception(backoff.expo, ee.EEException, max_tries=2)
 def get_stuff(dataset):
-    print('GET')
+    print("GET")
     return dataset.getInfo()
 
 
@@ -23,16 +22,16 @@ def chunk_iter(it, size):
 
 
 # TODO: break into smaller chunks on failure to retrieve
-def fetch_points(df, start='2015-01-01', end='2015-12-31', collection="LANDSAT/LC08/C01/T1_SR"):
-    #lon, lat = df.location_x, df.location_y
+def fetch_points(df, start="2015-01-01", end="2015-12-31", collection="LANDSAT/LC08/C01/T1_SR"):
+    # lon, lat = df.location_x, df.location_y
     lon, lat = df.longitude, df.latitude
 
     for iis in chunk_iter(iter(range(len(df))), 2):
-        iis=list(iis)
+        iis = list(iis)
 
         if len(iis) > 0:
             print(iis[-1])
-            if os.path.exists(f'{iis[-1]}.csv'):
+            if os.path.exists(f"{iis[-1]}.csv"):
                 continue
         else:
             continue
@@ -41,30 +40,28 @@ def fetch_points(df, start='2015-01-01', end='2015-12-31', collection="LANDSAT/L
         GEOM = ee.Geometry.MultiPolygon(boxes)
 
         dataset = (
-            #ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-            #ee.ImageCollection("MODIS/006/MCD64A1") 
-             ee.ImageCollection(collection) 
+            # ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+            # ee.ImageCollection("MODIS/006/MCD64A1")
+            ee.ImageCollection(collection)
             .filterDate(start, end)
             .filterBounds(GEOM)
             .getRegion(GEOM, 30)
         )
 
-        print('current chunk until index:', iis[-1])
+        print("current chunk until index:", iis[-1])
         try:
             e = get_stuff(dataset)
-            print(iis[-1], 'evaluated')
+            print(iis[-1], "evaluated")
             df = pd.DataFrame(e)
-            df.to_csv(f'data/{iis[-1]}_{start}_{end}.csv')
+            df.to_csv(f"data/{iis[-1]}_{start}_{end}.csv")
         except Exception as ex:
-            print('Couldnt retrieve', ex)
+            print("Couldnt retrieve", ex)
 
 
-#ee.Initialize()
+# ee.Initialize()
 
-#df = pd.read_csv("data/aam6527_Bastin_Database-S1.csv", sep=";")
-#df = pd.read_csv("data/bastin_db_cleaned.csv", sep=",")
-#df = df.loc[df["dryland_assessment_region"] == 'Australia']
-#fetch_points(df.iloc[:20,:])
-#fetch_points(df)
-
-
+# df = pd.read_csv("data/aam6527_Bastin_Database-S1.csv", sep=";")
+# df = pd.read_csv("data/bastin_db_cleaned.csv", sep=",")
+# df = df.loc[df["dryland_assessment_region"] == 'Australia']
+# fetch_points(df.iloc[:20,:])
+# fetch_points(df)

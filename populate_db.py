@@ -14,6 +14,7 @@ import pandas as pd
 import os
 import itertools
 
+
 def transform(df):
     """ Sticks to the hardcoded format;
         pretty much a one-off script but m/b requires reuse.
@@ -21,15 +22,17 @@ def transform(df):
     cols = df.columns.tolist()
     cols_new = cols[16:22] + [cols[1]] + cols[4:10] + cols[2:4] + cols[10:13]
     df = df[cols_new]
-    df.rename(columns={'longitude_y': 'longitude', 'latitude_y': 'latitude'}, inplace=True)
+    df.rename(columns={"longitude_y": "longitude", "latitude_y": "latitude"}, inplace=True)
     return df
 
-def main():
-    os.chdir('/home/dario/_py/tree-cover')
-    path = 'data/2015_full.csv'
-    df = pd.read_csv(path, sep=',')
-    df = transform(df)
-    df.to_csv('data/db.csv', index = False)
 
-if __name__ == '__main__':
+def main():
+    os.chdir("/home/dario/_py/tree-cover")
+    path = "data/2015_full.csv"
+    df = pd.read_csv(path, sep=",")
+    df = transform(df)
+    df.to_csv("data/db.csv", index=False)
+
+
+if __name__ == "__main__":
     main()
