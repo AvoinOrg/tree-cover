@@ -64,21 +64,21 @@ def single_point_populater(df, prep_method, aggregate_method, verbose=False):
         Returns the populated dataframe.
     """
     if verbose:
-        print("Populating data.")
+        print("Running single_point_populater().")
     df, info = prep_method(df, verbose=verbose)
     points = zip(df.longitude, df.latitude)
     for lon, lat in points:
         fetched_data = single_fetch(lon, lat, collection=info["collection"], verbose=verbose)
-        values = aggregate_method(fetched_data, lon, lat, info["cols"], verbose=verbose)
-        df.loc[(df["latitude"] == lat) & (df["longitude"] == lon), info["cols"]] = [values]
+        values = aggregate_method(fetched_data, lon, lat, info["fetch_cols"], verbose=verbose)
+        df.loc[(df["latitude"] == lat) & (df["longitude"] == lon), info["agg_cols"]] = [values]
     return df
 
 
-def landsat_aggregate_method(fetched_data, lon, lat, columns, verbose=False):
+def landsat_aggregate_method(fetched_data, lon, lat, fetch_cols, verbose=False):
     if verbose:
-        print("Aggregating data")
+        print("Running landsat_aggregate_method(lon={lon},lat={lat}).")
     dist = (fetched_data.longitude - lon) ** 2 + (fetched_data.latitude - lat) ** 2
-    values = fetched_data.loc[dist[dist == dist.min()].index, columns].median()
+    values = fetched_data.loc[dist[dist == dist.min()].index, fetch_cols].median()
     return values
 
 
@@ -91,12 +91,13 @@ def landsat_prepare_method(df, verbose=False):
         columns will a) exist and b) be None.
     """
     if verbose:
-        print("Preping data")
+        print("Running landsat_prepare_method().")
     info = {
         "collection": "LANDSAT/LC08/C01/T1_SR",
-        "cols": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B10", "B11", "sr_aerosol", "pixel_qa", "radsat_qa"],
+        "fetch_cols": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B10", "B11", "sr_aerosol", "pixel_qa", "radsat_qa"],
+        "agg_cols": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B10", "B11", "sr_aerosol", "pixel_qa", "radsat_qa"]
     }
-    for _ in info["cols"]:
+    for _ in info["agg_cols"]:
         df[_] = None
     return df, info
 
@@ -106,7 +107,7 @@ def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LAN
         Returns a pandas dataframe.
     """
     if verbose:
-        print("fetching data")
+        print("f'Running single_fetch(lon={lon},lat={lat}).'")
     pt = ee.Geometry.Point([lon, lat]).buffer(35).bounds()
     GEOM = ee.Geometry.MultiPolygon([pt])
 
@@ -126,7 +127,8 @@ def main():
     df_ex = df_ex.append(artificial_data, ignore_index=True)
     if len(df_ex) & len(df_ex) < 100:
         df_ex = single_point_populater(df_ex, landsat_prepare_method, landsat_aggregate_method, verbose=True)
-    db.append(df_ex)
+        db.append(df_ex)
+    elif: len(df_ex) >= 100: print("Data not in the database is too large. Please populate the database manually.")
     # Lets not overwrite our dummy data just yet.
     # db.to_csv('data/db.csv', sep=',')
 
