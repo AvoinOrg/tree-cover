@@ -9,7 +9,7 @@ ee.Initialize()
 
 data_full = pd.read_csv("data/bastin_db_cleaned.csv")
 
-start = "2017-06-01"
+start = "2017-06-01" # only available since 2018-12...
 end = "2019-08-31"
 area = "Australia"
 collection = "COPERNICUS/S2_SR"
@@ -36,7 +36,7 @@ def maskS2clouds(image):
 
 
 # todo: cloud mask? Nah better filter later and resample single entries with nonzero clouds or whole entries
-for i in range(3000, df.shape[0]):
+for i in range(12770, df.shape[0]):
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -71,12 +71,13 @@ for i in range(3000, df.shape[0]):
         # df.to_csv(f'data/SKYSAT_{start}_{end}_{iis[-1]}.csv')
     except Exception as ex:
         print("Couldnt retrieve", ex)
+        time.sleep(60)
 
-    if i - 1 % 1000 == 0:
+    if (i - 1) % 500 == 0:
         print(f"{i}: sleeping a while after fetching 1000.")
         print(f"Fetched data in {(time.time()-t_start)/60} minutes")
-        print("lon counts:", lon_counts)
-        print("lat counts:", lat_counts)
+        #print("lon counts:", lon_counts)
+        #print("lat counts:", lat_counts)
         t_start = time.time()
         f_name = f"data/sentinel_{start}-{end}_{i}.csv"
         if os.path.isfile(f_name):
