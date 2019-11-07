@@ -38,7 +38,7 @@ def maskS2clouds(image):
 f_name = f"data/sentinel_{start}-{end}_{int(t_start)}.csv"
 err_cnt = 0
 # todo: cloud mask? Nah better filter later and resample single entries with nonzero clouds or whole entries
-for i in range(13001, 13013):  # df.shape[0]): # df.shape[0]
+for i in range(13001, df.shape[0]):
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
