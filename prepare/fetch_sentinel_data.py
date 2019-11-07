@@ -6,39 +6,55 @@ import os
 
 ee.Initialize()
 
-
+region = "CentralAsia"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
-area = "Australia"
 collection = "COPERNICUS/S2_SR"
 
+# CentralAsia from 15104 to 35444
+# EastSouthAmerica from 35445 to 50463
+# Europe from 50464 to 65425
+# HornAfrica from 65426 to 85461
+# MiddleEast from 85462 to 100517
+# NorthAmerica from 100518 to 115525
+# NorthernAfrica from 115526 to 130638
+# Sahel from 130639 to 156723
+# SouthernAfrica from 156724 to 177951
+# SouthWestAsia from 177952 to 198234
+# WestSouthAmerica from 198235 to 213792
 # last index of oz is 15103, so need 15104 rows here.
-df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude"], nrows=15104)
+regions = [
+    "Australia",
+    "CentralAsia",
+    "EastSouthAmerica",
+    "Europe",
+    "HornAfrica",
+    "MiddleEast",
+    "NorthAmerica",
+    "NorthernAfrica",
+    "Sahel",
+    "SouthernAfrica",
+    "SouthWestAsia",
+    "WestSouthAmerica",
+]
+region_to_batch = {}
+df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude", "dryland_assessment_region"])
 
+for region in regions:
+    filtered = df[df["dryland_assessment_region"] == region]
+    region_to_batch[region] = (filtered.index.min(), filtered.index.max() + 1)
+
+df = df.drop("dryland_assessment_region", axis=1)
 lon_counts = dict()
 lat_counts = dict()
 retrieved = None
 t_start = time.time()
 saved = []
 
-
-def maskS2clouds(image):
-    qa = image.select("QA60")
-
-    # Bits 10 and 11 are clouds and cirrus, respectively.
-    cloudBitMask = 2 ** 10
-    cirrusBitMask = 2 ** 11
-
-    # Both flags should be set to zero, indicating clear conditions.
-    mask1 = qa.bitwiseAnd(cloudBitMask).eq(0)
-    mask2 = qa.bitwiseAnd(cirrusBitMask).eq(0)
-    return image.updateMask(mask1).updateMask(mask2).divide(10000)
-
-
-f_name = f"data/sentinel_{start}-{end}_{int(t_start)}.csv"
+f_name = f"data/sentinel_{start}-{end}_{region}_{0}.csv"
 err_cnt = 0
-# todo: cloud mask? Nah better filter later and resample single entries with nonzero clouds or whole entries
-for i in range(13001, df.shape[0]):
+
+for i in range(region_to_batch[region][0], region_to_batch[region][1]):
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -70,8 +86,6 @@ for i in range(13001, df.shape[0]):
             retrieved = fetched
         else:
             retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
-        # df = pd.DataFrame(e)
-        # df.to_csv(f'data/SKYSAT_{start}_{end}_{iis[-1]}.csv')
     except Exception as ex:
         print("Couldnt retrieve", ex)
         time.sleep(60)
@@ -83,7 +97,10 @@ for i in range(13001, df.shape[0]):
             raise ex
 
     if i % 10 == 0:
-        print(f"{i}: writing fetched data to file.")
+        if i % 1000 == 0:
+            f_name = f"data/sentinel_{start}-{end}_{region}_from_{i}.csv"
+        if i % 100 == 0:
+            print(f"{i}: writing fetched data to file.")
         # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
         # print("lon counts:", lon_counts)
         # print("lat counts:", lat_counts)
@@ -102,3 +119,16 @@ print(f"Fetched data in {(time.time()-t_start)/60} minutes")
 print("lon counts:", lon_counts)
 print("lat counts:", lat_counts)
 print("\a\a\a")  # done now
+
+
+def maskS2clouds(image):
+    qa = image.select("QA60")
+
+    # Bits 10 and 11 are clouds and cirrus, respectively.
+    cloudBitMask = 2 ** 10
+    cirrusBitMask = 2 ** 11
+
+    # Both flags should be set to zero, indicating clear conditions.
+    mask1 = qa.bitwiseAnd(cloudBitMask).eq(0)
+    mask2 = qa.bitwiseAnd(cirrusBitMask).eq(0)
+    return image.updateMask(mask1).updateMask(mask2).divide(10000)
