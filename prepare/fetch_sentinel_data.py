@@ -7,13 +7,13 @@ import os
 ee.Initialize()
 
 
-data_full = pd.read_csv("data/bastin_db_cleaned.csv")
-
-start = "2017-06-01" # only available since 2018-12...
+start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 area = "Australia"
 collection = "COPERNICUS/S2_SR"
-df = data_full[data_full["dryland_assessment_region"] == area]
+
+# last index of oz is 15103, so need 15104 rows here.
+df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude"], nrows=15104)
 
 lon_counts = dict()
 lat_counts = dict()
@@ -35,8 +35,10 @@ def maskS2clouds(image):
     return image.updateMask(mask1).updateMask(mask2).divide(10000)
 
 
+f_name = f"data/sentinel_{start}-{end}_{int(t_start)}.csv"
+err_cnt = 0
 # todo: cloud mask? Nah better filter later and resample single entries with nonzero clouds or whole entries
-for i in range(12770, df.shape[0]):
+for i in range(13001, 13013):  # df.shape[0]): # df.shape[0]
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -55,6 +57,7 @@ for i in range(12770, df.shape[0]):
     )
     try:
         e = dataset.getInfo()
+        err_cnt = 0
         fetched = pd.DataFrame(e[1:], columns=e[0])
         fetched["time"] = pd.to_datetime(fetched["time"], unit="ms")
         lons = pd.unique(fetched["longitude"]).size
@@ -72,24 +75,30 @@ for i in range(12770, df.shape[0]):
     except Exception as ex:
         print("Couldnt retrieve", ex)
         time.sleep(60)
+        if err_cnt == 0:
+            i -= 1
+        err_cnt += 1
+        if err_cnt >= 5:
+            print("Stopping execution, error occured 5 times")
+            raise ex
 
-    if (i - 1) % 500 == 0:
-        print(f"{i}: sleeping a while after fetching 1000.")
-        print(f"Fetched data in {(time.time()-t_start)/60} minutes")
-        #print("lon counts:", lon_counts)
-        #print("lat counts:", lat_counts)
-        t_start = time.time()
-        f_name = f"data/sentinel_{start}-{end}_{i}.csv"
+    if i % 10 == 0:
+        print(f"{i}: writing fetched data to file.")
+        # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
+        # print("lon counts:", lon_counts)
+        # print("lat counts:", lat_counts)
         if os.path.isfile(f_name):
-            print(f_name, " already exists! not overwriting.")
-            saved.append(retrieved)
+            with open(f_name, "a") as file:
+                retrieved.to_csv(file, header=False, index=False)
         else:
-            retrieved.to_csv(f_name)
+            retrieved.to_csv(f_name, index=False)
         retrieved = None
-        time.sleep(60)
+        time.sleep(1)
 
+if i % 10 != 0:
+    with open(f_name, "a") as file:
+        retrieved.to_csv(file, header=False, index=False)
 print(f"Fetched data in {(time.time()-t_start)/60} minutes")
 print("lon counts:", lon_counts)
 print("lat counts:", lat_counts)
-retrieved.to_csv(f"data/sentinel_{start}-{end}_{i}.csv")
 print("\a\a\a")  # done now

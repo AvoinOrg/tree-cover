@@ -79,7 +79,7 @@ def landsat_aggregate_method(fetched_data, lon, lat, fetch_cols, verbose=False):
         print(f"Running landsat_aggregate_method(lon={lon},lat={lat}).")
     dist = (fetched_data.longitude - lon) ** 2 + (fetched_data.latitude - lat) ** 2
     values = fetched_data.loc[dist[dist == dist.min()].index, fetch_cols].median()
-    values2 = fetched_data.loc[dist[dist == dist.min()].index, fetch_cols].std().add_suffix('_sd')
+    values2 = fetched_data.loc[dist[dist == dist.min()].index, fetch_cols].std().add_suffix("_sd")
     values = pd.concat([values, values2])
     return values
 
@@ -97,10 +97,32 @@ def landsat_prepare_method(df, verbose=False):
     info = {
         "collection": "LANDSAT/LC08/C01/T1_SR",
         "fetch_cols": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B10", "B11", "sr_aerosol", "pixel_qa", "radsat_qa"],
-        "agg_cols": ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B11', 'sr_aerosol',
-       'pixel_qa', 'radsat_qa', 'B1_sd', 'B2_sd', 'B3_sd', 'B4_sd', 'B5_sd',
-       'B6_sd', 'B7_sd', 'B10_sd', 'B11_sd', 'sr_aerosol_sd', 'pixel_qa_sd',
-       'radsat_qa_sd']
+        "agg_cols": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B10",
+            "B11",
+            "sr_aerosol",
+            "pixel_qa",
+            "radsat_qa",
+            "B1_sd",
+            "B2_sd",
+            "B3_sd",
+            "B4_sd",
+            "B5_sd",
+            "B6_sd",
+            "B7_sd",
+            "B10_sd",
+            "B11_sd",
+            "sr_aerosol_sd",
+            "pixel_qa_sd",
+            "radsat_qa_sd",
+        ],
     }
     for _ in info["agg_cols"]:
         df[_] = None
@@ -112,7 +134,7 @@ def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LAN
         Returns a pandas dataframe.
     """
     if verbose:
-        print(f'Running single_fetch(lon={lon},lat={lat}).')
+        print(f"Running single_fetch(lon={lon},lat={lat}).")
     pt = ee.Geometry.Point([lon, lat]).buffer(35).bounds()
     GEOM = ee.Geometry.MultiPolygon([pt])
 
@@ -133,7 +155,8 @@ def main():
     if len(df_ex) & len(df_ex) < 100:
         df_ex = single_point_populater(df_ex, landsat_prepare_method, landsat_aggregate_method, verbose=True)
         db.append(df_ex)
-    elif: len(df_ex) >= 100: print("Data not in the database is too large. Please populate the database manually.")
+    elif len(df_ex) >= 100:
+        print("Data not in the database is too large. Please populate the database manually.")
     # Lets not overwrite our dummy data just yet.
     # db.to_csv('data/db.csv', sep=',')
 
