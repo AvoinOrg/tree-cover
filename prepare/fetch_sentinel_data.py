@@ -6,10 +6,11 @@ import os
 
 ee.Initialize()
 
-region = "CentralAsia"
+area = "Europe"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
+print(f'fetching data for {area} from {start} to {end} for {collection}')
 
 # CentralAsia from 15104 to 35444
 # EastSouthAmerica from 35445 to 50463
@@ -51,10 +52,10 @@ retrieved = None
 t_start = time.time()
 saved = []
 
-f_name = f"data/sentinel_{start}-{end}_{region}_{0}.csv"
+f_name = f"data/sentinel_{start}-{end}_{area}_{0}.csv"
 err_cnt = 0
 
-for i in range(region_to_batch[region][0], region_to_batch[region][1]):
+for i in range(region_to_batch[area][0], region_to_batch[area][1]):
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -72,6 +73,7 @@ for i in range(region_to_batch[region][0], region_to_batch[region][1]):
         # The output contains rows of id, lon, lat, time, and all bands for each image that intersects each pixel in the given region.
     )
     try:
+        time.sleep(1)
         e = dataset.getInfo()
         err_cnt = 0
         fetched = pd.DataFrame(e[1:], columns=e[0])
@@ -98,7 +100,7 @@ for i in range(region_to_batch[region][0], region_to_batch[region][1]):
 
     if i % 10 == 0:
         if i % 1000 == 0:
-            f_name = f"data/sentinel_{start}-{end}_{region}_from_{i}.csv"
+            f_name = f"data/sentinel_{start}-{end}_{area}_from_{i}.csv"
         if i % 100 == 0:
             print(f"{i}: writing fetched data to file.")
         # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
