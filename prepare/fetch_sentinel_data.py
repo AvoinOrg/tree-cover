@@ -6,12 +6,13 @@ import os
 
 ee.Initialize()
 
-area = "Europe"
+area = "SouthernAfrica"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
 print(f'fetching data for {area} from {start} to {end} for {collection}')
 
+# Australia from 0 to 15103
 # CentralAsia from 15104 to 35444
 # EastSouthAmerica from 35445 to 50463
 # Europe from 50464 to 65425
@@ -23,20 +24,19 @@ print(f'fetching data for {area} from {start} to {end} for {collection}')
 # SouthernAfrica from 156724 to 177951
 # SouthWestAsia from 177952 to 198234
 # WestSouthAmerica from 198235 to 213792
-# last index of oz is 15103, so need 15104 rows here.
 regions = [
-    "Australia",
+    "Australia", # done
     "CentralAsia",
-    "EastSouthAmerica",
+    "EastSouthAmerica", # done
     "Europe",
     "HornAfrica",
     "MiddleEast",
     "NorthAmerica",
     "NorthernAfrica",
     "Sahel",
-    "SouthernAfrica",
+    "SouthernAfrica", # done
     "SouthWestAsia",
-    "WestSouthAmerica",
+    "WestSouthAmerica", # done
 ]
 region_to_batch = {}
 df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude", "dryland_assessment_region"])
@@ -52,7 +52,7 @@ retrieved = None
 t_start = time.time()
 saved = []
 
-f_name = f"data/sentinel_{start}-{end}_{area}_{0}.csv"
+f_name = f"data/sentinel_{start}-{end}_{area}_from{region_to_batch[area][0]}.csv"
 err_cnt = 0
 
 for i in range(region_to_batch[area][0], region_to_batch[area][1]):
@@ -89,13 +89,13 @@ for i in range(region_to_batch[area][0], region_to_batch[area][1]):
         else:
             retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
     except Exception as ex:
-        print("Couldnt retrieve", ex)
-        time.sleep(60)
+        print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
+        time.sleep(2**(err_cnt + 1))
         if err_cnt == 0:
             i -= 1
         err_cnt += 1
-        if err_cnt >= 5:
-            print("Stopping execution, error occured 5 times")
+        if err_cnt > 5:
+            print("Stopping execution, error occured 6 times")
             raise ex
 
     if i % 10 == 0:
@@ -112,7 +112,6 @@ for i in range(region_to_batch[area][0], region_to_batch[area][1]):
         else:
             retrieved.to_csv(f_name, index=False)
         retrieved = None
-        time.sleep(1)
 
 if i % 10 != 0:
     with open(f_name, "a") as file:
