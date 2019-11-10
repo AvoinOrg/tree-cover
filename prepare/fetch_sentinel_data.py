@@ -25,7 +25,7 @@ print(f'fetching data for {area} from {start} to {end} for {collection}')
 # SouthWestAsia from 177952 to 198234
 # WestSouthAmerica from 198235 to 213792
 regions = [
-    "Australia", # done
+    "Australia", # done - except first 3000
     "CentralAsia",
     "EastSouthAmerica", # done
     "Europe",
