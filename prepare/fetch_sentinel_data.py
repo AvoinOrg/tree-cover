@@ -52,10 +52,11 @@ retrieved = None
 t_start = time.time()
 saved = []
 
-f_name = f"data/sentinel_{start}-{end}_{area}_from{region_to_batch[area][0]}.csv"
+f_name = f"data/sentinel_{start}-{end}_{area}_from_{region_to_batch[area][0]}.csv"
 err_cnt = 0
 
-for i in range(region_to_batch[area][0], region_to_batch[area][1]):
+i = region_to_batch[area][0]
+while i < region_to_batch[area][1]:
 
     # iis=list(range((i-1)*10, i*10))
     # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
@@ -84,6 +85,7 @@ for i in range(region_to_batch[area][0], region_to_batch[area][1]):
         lat_counts[lats] = lat_counts.get(lats, 0) + 1
         counts = fetched.groupby(["latitude", "longitude"]).count().shape[0]
         fetched["id"] = df.index[i]  # index in bastin_cleaned.csv
+        i += 1
         if retrieved is None:
             retrieved = fetched
         else:
@@ -91,11 +93,9 @@ for i in range(region_to_batch[area][0], region_to_batch[area][1]):
     except Exception as ex:
         print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
         time.sleep(2**(err_cnt + 1))
-        if err_cnt == 0:
-            i -= 1
         err_cnt += 1
-        if err_cnt > 5:
-            print("Stopping execution, error occured 6 times")
+        if err_cnt > 9:
+            print("Stopping execution, error occured 10 times")
             raise ex
 
     if i % 10 == 0:
