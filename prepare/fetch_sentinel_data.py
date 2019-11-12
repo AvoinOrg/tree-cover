@@ -42,7 +42,7 @@ def clean_df(df):
 # WestSouthAmerica from 198235 to 213792
 regions = [
     "Australia", # done - except first 3000
-    "CentralAsia",
+    "CentralAsia", # running on my pc now.
     "EastSouthAmerica", # done
     "Europe",
     "HornAfrica",
@@ -74,8 +74,13 @@ f_name = f"data/sentinel/{area}.db"
 db_exists = os.path.isfile(f_name)
 
 with lite.connect(f_name) as con:
-    if not db_exists:
+    if db_exists:
+        last_id = con.execute('SELECT MAX(id) FROM sentinel').fetchone()[0]
+        if last_id is not None:
+            i = last_id
+    else:
         con.execute(stmt)
+    print('starting at index ', i)
     while i < region_to_batch[area][1]:
     
         # iis=list(range((i-1)*10, i*10))
@@ -130,6 +135,7 @@ with lite.connect(f_name) as con:
     if i % 10 != 0:
         retrieved.to_sql('sentinel', con, if_exists='append', index=False)
         
+# con closes when exiting with 
 print(f"Fetched data in {(time.time()-t_start)/60} minutes")
 print("lon counts:", lon_counts)
 print("lat counts:", lat_counts)
