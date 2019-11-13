@@ -45,13 +45,13 @@ regions = [
     "CentralAsia", # running on my pc now.
     "EastSouthAmerica", # done
     "Europe",
-    "HornAfrica",
+    "HornAfrica", # running on luca
     "MiddleEast",
     "NorthAmerica", # done
     "NorthernAfrica",
     "Sahel",
     "SouthernAfrica", # done
-    "SouthWestAsia",
+    "SouthWestAsia", # running on instance
     "WestSouthAmerica", # done
 ]
 region_to_batch = {}
@@ -118,7 +118,6 @@ with lite.connect(f_name) as con:
                 retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
         except Exception as ex:
             print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
-            print(ex.message)
             if "Expected a homogeneous image collection" in str(e) and consecutive_incompat_bands < 100:
                 print("Continue with next image due to incompatible bands")
                 i += 1
