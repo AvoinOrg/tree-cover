@@ -3,14 +3,30 @@ import ee
 import pandas as pd
 import time
 import os
+import sqlite3 as lite
 
 ee.Initialize()
 
-area = "SouthernAfrica"
+area = "CentralAsia"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
 print(f'fetching data for {area} from {start} to {end} for {collection}')
+stmt = """CREATE TABLE sentinel(id INT,longitude FLOAT, latitude FLOAT, time DATETIME, B1 SMALLINT, B2 SMALLINT, 
+       B3 SMALLINT, B4 SMALLINT, B5 SMALLINT, B6 SMALLINT, B7 SMALLINT, B8 SMALLINT, B8A SMALLINT, B9 SMALLINT,
+       B11 SMALLINT, B12 SMALLINT, AOT SMALLINT, WVP SMALLINT, SCL SMALLINT, TCI_R SMALLINT, TCI_G SMALLINT,
+       TCI_B SMALLINT, MSK_CLDPRB SMALLINT, MSK_SNWPRB SMALLINT, HAS_CLOUDFLAG BOOLEAN)"""
+
+
+def clean_df(df):
+    df['HAS_CLOUDFLAG'] = (df['QA60'] == 1024.) | (df['QA60'] == 2048.)
+    # https://gis.stackexchange.com/questions/8650/measuring-accuracy-of-latitude-and-longitude
+    df.longitude = df.longitude.round(7)
+    df.latitude = df.latitude.round(7)
+    df.time = pd.to_datetime(df.time, unit="ms").apply(lambda t: t.value//10**9)
+    df.drop(['QA10', 'QA20', 'QA60'], axis=1, inplace=True)
+    return df
+
 
 # Australia from 0 to 15103
 # CentralAsia from 15104 to 35444
@@ -26,12 +42,12 @@ print(f'fetching data for {area} from {start} to {end} for {collection}')
 # WestSouthAmerica from 198235 to 213792
 regions = [
     "Australia", # done - except first 3000
-    "CentralAsia",
+    "CentralAsia", # running on my pc now.
     "EastSouthAmerica", # done
     "Europe",
     "HornAfrica",
     "MiddleEast",
-    "NorthAmerica",
+    "NorthAmerica", # done
     "NorthernAfrica",
     "Sahel",
     "SouthernAfrica", # done
@@ -39,83 +55,87 @@ regions = [
     "WestSouthAmerica", # done
 ]
 region_to_batch = {}
-df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude", "dryland_assessment_region"])
+bastin_df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude", "dryland_assessment_region"])
 
 for region in regions:
-    filtered = df[df["dryland_assessment_region"] == region]
+    filtered = bastin_df[bastin_df["dryland_assessment_region"] == region]
     region_to_batch[region] = (filtered.index.min(), filtered.index.max() + 1)
 
-df = df.drop("dryland_assessment_region", axis=1)
+bastin_df.drop("dryland_assessment_region", axis=1, inplace=True)
 lon_counts = dict()
 lat_counts = dict()
 retrieved = None
 t_start = time.time()
 saved = []
-
-f_name = f"data/sentinel_{start}-{end}_{area}_from_{region_to_batch[area][0]}.csv"
 err_cnt = 0
-
 i = region_to_batch[area][0]
-while i < region_to_batch[area][1]:
+f_name = f"data/sentinel/{area}.db"
 
-    # iis=list(range((i-1)*10, i*10))
-    # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
-    # GEOM = ee.Geometry.MultiPolygon(boxes)
+db_exists = os.path.isfile(f_name)
 
-    GEOM = ee.Geometry.Point([df["longitude"].iloc[i], df["latitude"].iloc[i]]).buffer(35).bounds()
-
-    dataset = (
-        ee.ImageCollection(collection)
-        .filterDate(start, end)
-        .filterBounds(GEOM)
-        # .map(maskS2clouds)
-        .getRegion(GEOM, 10)
-        # getRegion: Output an array of values for each [pixel, band, image] tuple in an ImageCollection.
-        # The output contains rows of id, lon, lat, time, and all bands for each image that intersects each pixel in the given region.
-    )
-    try:
-        time.sleep(1)
-        e = dataset.getInfo()
-        err_cnt = 0
-        fetched = pd.DataFrame(e[1:], columns=e[0])
-        fetched["time"] = pd.to_datetime(fetched["time"], unit="ms")
-        lons = pd.unique(fetched["longitude"]).size
-        lats = pd.unique(fetched["latitude"]).size
-        lon_counts[lons] = lon_counts.get(lons, 0) + 1
-        lat_counts[lats] = lat_counts.get(lats, 0) + 1
-        counts = fetched.groupby(["latitude", "longitude"]).count().shape[0]
-        fetched["id"] = df.index[i]  # index in bastin_cleaned.csv
-        i += 1
-        if retrieved is None:
-            retrieved = fetched
-        else:
-            retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
-    except Exception as ex:
-        print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
-        time.sleep(2**(err_cnt + 1))
-        err_cnt += 1
-        if err_cnt > 9:
-            print("Stopping execution, error occured 10 times")
-            raise ex
-
-    if i % 10 == 0:
-        if i % 1000 == 0:
-            f_name = f"data/sentinel_{start}-{end}_{area}_from_{i}.csv"
-        if i % 100 == 0:
-            print(f"{i}: writing fetched data to file.")
-        # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
-        # print("lon counts:", lon_counts)
-        # print("lat counts:", lat_counts)
-        if os.path.isfile(f_name):
-            with open(f_name, "a") as file:
-                retrieved.to_csv(file, header=False, index=False)
-        else:
-            retrieved.to_csv(f_name, index=False)
-        retrieved = None
-
-if i % 10 != 0:
-    with open(f_name, "a") as file:
-        retrieved.to_csv(file, header=False, index=False)
+with lite.connect(f_name) as con:
+    if db_exists:
+        last_id = con.execute('SELECT MAX(id) FROM sentinel').fetchone()[0]
+        if last_id is not None:
+            i = last_id
+    else:
+        con.execute(stmt)
+    print('starting at index ', i)
+    while i < region_to_batch[area][1]:
+    
+        # iis=list(range((i-1)*10, i*10))
+        # boxes = [ee.Geometry.Point([lon[i], lat[i]]).buffer(35).bounds() for i in iis]
+        # GEOM = ee.Geometry.MultiPolygon(boxes)
+    
+        GEOM = ee.Geometry.Point([bastin_df["longitude"].iloc[i], bastin_df["latitude"].iloc[i]]).buffer(35).bounds()
+    
+        dataset = (
+            ee.ImageCollection(collection)
+            .filterDate(start, end)
+            .filterBounds(GEOM)
+            # .map(maskS2clouds)
+            .getRegion(GEOM, 10)
+            # getRegion: Output an array of values for each [pixel, band, image] tuple in an ImageCollection.
+            # The output contains rows of id, lon, lat, time, and all bands for each image that intersects each pixel in the given region.
+        )
+        try:
+            time.sleep(1)
+            e = dataset.getInfo()
+            err_cnt = 0
+            fetched = pd.DataFrame(e[1:], columns=e[0])
+            fetched["id"] = bastin_df.index[i]  # index in bastin_cleaned.csv
+            fetched = clean_df(fetched)
+            lons = pd.unique(fetched["longitude"]).size
+            lats = pd.unique(fetched["latitude"]).size
+            lon_counts[lons] = lon_counts.get(lons, 0) + 1
+            lat_counts[lats] = lat_counts.get(lats, 0) + 1
+            counts = fetched.groupby(["latitude", "longitude"]).count().shape[0]
+            i += 1
+            if retrieved is None:
+                retrieved = fetched
+            else:
+                retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
+        except Exception as ex:
+            print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
+            time.sleep(2**(err_cnt + 1))
+            err_cnt += 1
+            if err_cnt > 9:
+                print("Stopping execution, error occured 10 times")
+                raise ex
+    
+        if i % 10 == 0:
+            if i % 100 == 0:
+                print(f"{i}: writing fetched data to file.")
+            # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
+            # print("lon counts:", lon_counts)
+            # print("lat counts:", lat_counts)
+            retrieved.to_sql('sentinel', con, if_exists='append', index=False)
+            retrieved = None
+    
+    if i % 10 != 0:
+        retrieved.to_sql('sentinel', con, if_exists='append', index=False)
+        
+# con closes when exiting with 
 print(f"Fetched data in {(time.time()-t_start)/60} minutes")
 print("lon counts:", lon_counts)
 print("lat counts:", lat_counts)
