@@ -78,7 +78,7 @@ with lite.connect(f_name) as con:
     if db_exists:
         last_id = con.execute('SELECT MAX(id) FROM sentinel').fetchone()[0]
         if last_id is not None:
-            i = last_id
+            i = last_id+1
     else:
         con.execute(stmt)
     print('starting at index ', i)
