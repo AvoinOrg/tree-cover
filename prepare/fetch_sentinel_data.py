@@ -68,6 +68,7 @@ retrieved = None
 t_start = time.time()
 saved = []
 err_cnt = 0
+consecutive_incompat_bands = 0
 i = region_to_batch[area][0]
 f_name = f"data/sentinel/{area}.db"
 
@@ -117,11 +118,17 @@ with lite.connect(f_name) as con:
                 retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
         except Exception as ex:
             print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
-            time.sleep(2**(err_cnt + 1))
-            err_cnt += 1
-            if err_cnt > 9:
-                print("Stopping execution, error occured 10 times")
-                raise ex
+            print(ex.message)
+            if "Expected a homogeneous image collection" in str(e) and consecutive_incompat_bands < 100:
+                print("Continue with next image due to incompatible bands")
+                i += 1
+                consecutive_incompat_bands += 1
+            else:
+                time.sleep(2**(err_cnt + 1))
+                err_cnt += 1
+                if err_cnt > 9:
+                    print("Stopping execution, error occured 10 times")
+                    raise ex
     
         if i % 10 == 0:
             if i % 100 == 0:
