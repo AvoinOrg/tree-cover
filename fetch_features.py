@@ -18,6 +18,7 @@ import os
 import pandas as pd
 import backoff
 import itertools
+import time
 
 # import elias_mail
 
@@ -54,6 +55,29 @@ def extend_df_landsat(df, chunk_size=2):
 
         i += min(chunk_size, max(len(df) - 1 - i, 1))
     return df
+
+def batch_populater(a,b):
+    """ Needs generalization to incorporate multiple data sets.
+        Currently adds landsat data.
+    """
+    #pts = single_point_populater(
+    #    df[0:1], landsat_prepare_method, landsat_aggregate_method, verbose=True)
+    #db = pts[0:0]
+    df = pd.read_csv("data/db.csv", sep=",")
+    df = df[a:b]
+    #df = df
+    db = pd.read_csv("data/df_empty_dummy.csv", sep=",")
+    #df, df_in = not_in_db(df, db)
+    i = 0
+    while i < len(df):
+        pts = single_point_populater(df.iloc[i:i+10],
+                                     landsat_prepare_method,
+                                     landsat_aggregate_method, verbose=True)
+        print(f'Writing #{i} to {i+10}.')
+        #db = db.append(pts)
+        pts.to_csv('data/df_empty_dummy.csv', sep=',', index=False, header=False, mode = 'a')
+        if len(df) - i > 10: i += 10
+        else: i += len(df)-i
 
 
 def single_point_populater(df, prep_method, aggregate_method, verbose=False):
@@ -138,7 +162,9 @@ def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LAN
     pt = ee.Geometry.Point([lon, lat]).buffer(35).bounds()
     GEOM = ee.Geometry.MultiPolygon([pt])
 
-    dataset = (ee.ImageCollection(collection).filterDate(start, end).filterBounds(GEOM).getRegion(GEOM, 30)).getInfo()
+    dataset = ee.ImageCollection(collection).filterDate(start, end).filterBounds(GEOM).getRegion(GEOM, 30)
+    time.sleep(1)
+    dataset = dataset.getInfo()
     dataset = pd.DataFrame(dataset[1:], columns=dataset[0])
     return dataset
 
@@ -146,17 +172,17 @@ def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LAN
 def main():
     os.chdir("/home/dario/_py/tree-cover")
     ee.Initialize()
-    df = pd.read_csv("data/input.csv", sep=",")
-    db = pd.read_csv("data/db.csv", sep=",")
-    df_ex, df_in = not_in_db(df, db)
+    #df = pd.read_csv("data/input.csv", sep=",")
+    #db = pd.read_csv("data/db.csv", sep=",")
+    #df_ex, df_in = not_in_db(df, db)
     # elias_mail.fetch_points(df_ex) #Does not finish?
-    artificial_data = {"index": 1337, "longitude": 13.37, "latitude": 13.37}
-    df_ex = df_ex.append(artificial_data, ignore_index=True)
-    if len(df_ex) & len(df_ex) < 100:
-        df_ex = single_point_populater(df_ex, landsat_prepare_method, landsat_aggregate_method, verbose=True)
-        db.append(df_ex)
-    elif len(df_ex) >= 100:
-        print("Data not in the database is too large. Please populate the database manually.")
+    #artificial_data = {"index": 1337, "longitude": 13.37, "latitude": 13.37}
+    #df_ex = df_ex.append(artificial_data, ignore_index=True)
+    #if len(df_ex) & len(df_ex) < 100:
+    #    df_ex = single_point_populater(df_ex, landsat_prepare_method, landsat_aggregate_method, verbose=True)
+    #    db.append(df_ex)
+    #elif len(df_ex) >= 100:
+    #    print("Data not in the database is too large. Please populate the database manually.")
     # Lets not overwrite our dummy data just yet.
     # db.to_csv('data/db.csv', sep=',')
 
