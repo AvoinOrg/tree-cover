@@ -7,7 +7,7 @@ import sqlite3 as lite
 
 ee.Initialize()
 
-area = "CentralAsia"
+area = "HornAfrica"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
@@ -118,7 +118,7 @@ with lite.connect(f_name) as con:
                 retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
         except Exception as ex:
             print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
-            if "Expected a homogeneous image collection" in str(e) and consecutive_incompat_bands < 100:
+            if "Expected a homogeneous image collection" in str(ex) and consecutive_incompat_bands < 100:
                 print("Continue with next image due to incompatible bands")
                 i += 1
                 consecutive_incompat_bands += 1
@@ -129,7 +129,7 @@ with lite.connect(f_name) as con:
                     print("Stopping execution, error occured 10 times")
                     raise ex
     
-        if i % 10 == 0:
+        if retrieved is not None and i % 10 == 0:
             if i % 100 == 0:
                 print(f"{i}: writing fetched data to file.")
             # print(f"Fetched data in {(time.time()-t_start)/60} minutes")
