@@ -53,32 +53,31 @@ def import_full_csv():
         con.commit()
         
 def gen_fetch_stmt_and_headers():
-    stmt = "select id"
+    stmt = "select id, "
     funs = ['min', 'max', 'avg', 'stdev', 'median', 'lower_quartile', 'upper_quartile']
     headers = []
     for band in val_cols + ['NDVI']:
         for fun in funs:
-            stmt += f', {fun}({band}_m)'
+            stmt += f'{fun}({band}_m), '
             headers.append(f'{fun}({band}_m)')
-    stmt += ", count(case SCL_m when 4 then 1 else null end)/count(SCL_m) as veg_pc from (select "
+    stmt += "count(case SCL_m when 4 then 1 else null end)/count(SCL_m) as veg_pc from (select "
     stmt += "id, longitude, latitude, " + ', '.join(f'median({b}) as {b}_m' for b in val_cols) 
     stmt += ", mode(SCL) as SCL_m, (1.0*median(B8)-median(B5))/(median(B8)+median(B5)) as NDVI_m from sentinel where "
-    stmt += "id = ? and (HAS_CLOUDFLAG = 0 or MSK_CLDPRB <0.1) and date(time, 'unixepoch') between "
-    stmt += "? and ? group by id, longitude, latitude)"
+    stmt += "id in ? and (HAS_CLOUDFLAG = 0 or MSK_CLDPRB <0.1) and date(time, 'unixepoch') between "
+    stmt += "? and ? group by id, longitude, latitude) group by id"
     headers.append('veg_pc')
     return stmt, headers
 
 
-t_start = '2018-12-01'
-t_end = '2019-02-28'
-def compute_features(t_start, t_end, export_file):
+t_start = '2018-06-01'
+t_end = '2019-08-31'
+def compute_features(t_start, t_end):
     """
     Computes min, max, mean, std, lower& upper quartile for the median values of the retrieved band values and the NDVI
     within the passed timeframe (as datestring 'YYYY-MM-DD'). Note that data is only available from ~2018-12-15 to
     2019-08-31. Currently used to extract the seasons within that timeframe.
     """
     region_to_bounds = {}
-    ok_rows = 0
     err_rows = []
     # don't have data for all yet... # pd.unique(bastin_db.dryland_assessment_region)
     all_regs = ["Australia", "EastSouthAmerica", "NorthAmerica", "SouthernAfrica", "WestSouthAmerica"] 
@@ -88,31 +87,30 @@ def compute_features(t_start, t_end, export_file):
     fetch_stmt, new_cols = gen_fetch_stmt_and_headers()
     bastin_extended = bastin_db.reindex(bastin_db.columns.tolist() + new_cols,axis='columns', copy=True)
     for reg in all_regs:
+        idx_start = region_to_bounds[reg][0]
+        idx_end = region_to_bounds[reg][1]
         with lite.connect(db_folder + reg + '.db') as con:
             con.enable_load_extension(True)
             con.load_extension(lib_extension_path)
             print(f'Computing features for {reg} from {t_start} to {t_end}')
-            # will any be invalid if I just join by date?
-            inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
-            if len(inv_ids) > 0:
-                print(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
-                continue
-            for i in range(region_to_bounds[reg][0], region_to_bounds[reg][1]):
-                try:
-                    data_row = con.execute(fetch_stmt, (i, t_start, t_end)).fetchall()[0]
-                    bastin_extended.loc[0, new_cols] = data_row[1:] # no need to re-set the ID
-                    ok_rows+=1
-                except Exception as e:
-                    print(f'i: {i} - ', e)
-                    err_rows.append(i)
-                if i % 5000 == 0:
-                    print('i:', i)
-    print(f'Completed feature extraction for {ok_rows} rows.')
+            try:
+                # will any be invalid if I just join by date?
+                inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
+                if len(inv_ids) > 0:
+                    raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
+                curr_stmt = fetch_stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
+                data_rows = con.execute(curr_stmt, (t_start, t_end)).fetchall()
+                data_df = pd.DataFrame(data_rows).set_index([0],drop=True)
+                bastin_extended.loc[data_df.index, new_cols] = data_df.to_numpy()
+            except Exception as e:
+                print(reg, e)
+                err_rows.append(reg)
+
+    print(f'Completed feature extraction.')
     if len(err_rows) > 0:
-        print('Had errors for indices: ', err_rows)
+        print('Had errors for regions: ', err_rows)
     with_features = bastin_extended[new_cols].round(5)
     with_features.to_csv(db_folder + f'features_{t_start}-{t_end}.csv', sep=',')
 
 
-#with_features = compute_features('2018-12-01', '2019-02-28')
-#with_features.to_csv(export_file, sep=',')
+# compute_features(t_start, t_end)
