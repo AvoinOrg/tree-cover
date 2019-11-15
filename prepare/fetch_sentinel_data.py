@@ -7,7 +7,7 @@ import sqlite3 as lite
 
 ee.Initialize()
 
-area = "HornAfrica"
+area = "SouthWestAsia"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
@@ -69,6 +69,7 @@ t_start = time.time()
 saved = []
 err_cnt = 0
 consecutive_incompat_bands = 0
+consecutive_too_many_vals = 0
 i = region_to_batch[area][0]
 f_name = f"data/sentinel/{area}.db"
 
@@ -100,7 +101,7 @@ with lite.connect(f_name) as con:
             # The output contains rows of id, lon, lat, time, and all bands for each image that intersects each pixel in the given region.
         )
         try:
-            time.sleep(1)
+            # time.sleep(1)
             e = dataset.getInfo()
             err_cnt = 0
             fetched = pd.DataFrame(e[1:], columns=e[0])
@@ -122,6 +123,10 @@ with lite.connect(f_name) as con:
                 print("Continue with next image due to incompatible bands")
                 i += 1
                 consecutive_incompat_bands += 1
+            elif "Too many values:" in str(ex) and consecutive_too_many_vals < 100:
+                print("Continue with next image due to too much data")
+                i += 1
+                consecutive_too_many_vals += 1
             else:
                 time.sleep(2**(err_cnt + 1))
                 err_cnt += 1
