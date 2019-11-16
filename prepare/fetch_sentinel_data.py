@@ -7,7 +7,7 @@ import sqlite3 as lite
 
 ee.Initialize()
 
-area = "SouthWestAsia"
+area = "Sahel"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
@@ -49,11 +49,13 @@ regions = [
     "MiddleEast",
     "NorthAmerica", # done
     "NorthernAfrica",
-    "Sahel",
+    "Sahel", # running on luca
     "SouthernAfrica", # done
     "SouthWestAsia", # running on instance
     "WestSouthAmerica", # done
 ]
+bands = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA10", "QA20", "QA60"]
+band_types = ["uint32"]*14 + ["uint8"]*6 + ["uint32"]*3
 region_to_batch = {}
 bastin_df = pd.read_csv("data/bastin_db_cleaned.csv", usecols=["longitude", "latitude", "dryland_assessment_region"])
 
@@ -68,7 +70,6 @@ retrieved = None
 t_start = time.time()
 saved = []
 err_cnt = 0
-consecutive_incompat_bands = 0
 consecutive_too_many_vals = 0
 i = region_to_batch[area][0]
 f_name = f"data/sentinel/{area}.db"
@@ -95,6 +96,7 @@ with lite.connect(f_name) as con:
             ee.ImageCollection(collection)
             .filterDate(start, end)
             .filterBounds(GEOM)
+            .cast(dict(zip(bands, band_types)), bands)
             # .map(maskS2clouds)
             .getRegion(GEOM, 10)
             # getRegion: Output an array of values for each [pixel, band, image] tuple in an ImageCollection.
@@ -104,7 +106,6 @@ with lite.connect(f_name) as con:
             # time.sleep(1)
             e = dataset.getInfo()
             err_cnt = 0
-            consecutive_incompat_bands = 0
             consecutive_too_many_vals = 0
             fetched = pd.DataFrame(e[1:], columns=e[0])
             fetched["id"] = bastin_df.index[i]  # index in bastin_cleaned.csv
@@ -121,11 +122,7 @@ with lite.connect(f_name) as con:
                 retrieved = pd.concat((retrieved, fetched), axis=0, copy=False)
         except Exception as ex:
             print(f"i:{i} attempt {err_cnt+1} failed with: ", ex)
-            if "Expected a homogeneous image collection" in str(ex) and consecutive_incompat_bands < 100:
-                print("Continue with next image due to incompatible bands")
-                i += 1
-                consecutive_incompat_bands += 1
-            elif "Too many values:" in str(ex) and consecutive_too_many_vals < 100:
+            if "Too many values:" in str(ex) and consecutive_too_many_vals < 100:
                 print("Continue with next image due to too much data")
                 i += 1
                 consecutive_too_many_vals += 1
