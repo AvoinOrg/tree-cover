@@ -45,7 +45,7 @@ regions = [
     "CentralAsia", # running on my pc now.
     "EastSouthAmerica", # done
     "Europe",
-    "HornAfrica", # running on luca
+    "HornAfrica", # done
     "MiddleEast",
     "NorthAmerica", # done
     "NorthernAfrica",
@@ -104,6 +104,8 @@ with lite.connect(f_name) as con:
             # time.sleep(1)
             e = dataset.getInfo()
             err_cnt = 0
+            consecutive_incompat_bands = 0
+            consecutive_too_many_vals = 0
             fetched = pd.DataFrame(e[1:], columns=e[0])
             fetched["id"] = bastin_df.index[i]  # index in bastin_cleaned.csv
             fetched = clean_df(fetched)
