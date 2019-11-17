@@ -7,7 +7,7 @@ import sqlite3 as lite
 
 ee.Initialize()
 
-area = "Sahel"
+area = "CentralAsia"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"

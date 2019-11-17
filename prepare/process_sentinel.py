@@ -8,6 +8,10 @@ Methods to process the data retrieved by `fetch_sentinel.py`. You need to adjust
 import pandas as pd
 import sqlite3 as lite
 from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+
+import prepare.image_reshaper as ir
 
 lib_extension_path = '/home/fynn/Apps/anaconda3/include/libsqlitefunctions.so'
 bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
@@ -63,8 +67,8 @@ def gen_fetch_stmt_and_headers():
     stmt += "count(case SCL_m when 4 then 1 else null end)/count(SCL_m) as veg_pc from (select "
     stmt += "id, longitude, latitude, " + ', '.join(f'median({b}) as {b}_m' for b in val_cols) 
     stmt += ", mode(SCL) as SCL_m, (1.0*median(B8)-median(B5))/(median(B8)+median(B5)) as NDVI_m from sentinel where "
-    stmt += "id in ? and (HAS_CLOUDFLAG = 0 or MSK_CLDPRB <0.1) and date(time, 'unixepoch') between "
-    stmt += "? and ? group by id, longitude, latitude) group by id"
+    stmt += "id in ? and (HAS_CLOUDFLAG = 0 and MSK_CLDPRB is null or MSK_CLDPRB <0.1 and MSK_SNWPRB < 0.1) and "
+    stmt += "date(time, 'unixepoch') between ? and ? group by id, longitude, latitude) group by id"
     headers.append('veg_pc')
     return stmt, headers
 
@@ -113,4 +117,46 @@ def compute_features(t_start, t_end):
     with_features.to_csv(db_folder + f'features_{t_start}-{t_end}.csv', sep=',')
 
 
-# compute_features(t_start, t_end)
+# todo: standardise data!!!
+def prepare_image(t_start, t_end):
+    reg = 'Australia'
+    mode = 'interp'
+    params = ['nearest']
+    size = [7,7]
+    include_ndvi = True
+    ndvi_scaler = MinMaxScaler(feature_range=(0,255))
+    missing = []
+    
+    img_cols = ["TCI_R", "TCI_G", "TCI_B"]
+    stmt = "select id, longitude, latitude, " + ', '.join(f'median({b}) as {b}_m' for b in img_cols) 
+    if include_ndvi:
+        stmt += ", (1.0*median(B8)-median(B5))/(median(B8)+median(B5)) as NDVI_m"
+    stmt += " from sentinel where "
+    stmt += "id in ? and (HAS_CLOUDFLAG = 0 and MSK_CLDPRB is NULL or MSK_CLDPRB <0.1 and MSK_SNWPRB < 0.1) and "
+    stmt += "date(time, 'unixepoch') between ? and ? group by id, longitude, latitude order by id, longitude, latitude"
+    all_imgs = []
+    with lite.connect(db_folder + reg + '.db') as con:
+        con.enable_load_extension(True)
+        con.load_extension(lib_extension_path)
+        print(f'Computing features for {reg} from {t_start} to {t_end}')
+        curr_stmt = stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
+        data_rows = con.execute(curr_stmt, (t_start, t_end)).fetchall()
+        data_df = pd.DataFrame(data_rows).set_index([0],drop=True)
+        for i in pd.unique(data_df.index):
+            img_df = data_df.loc[i]
+            img_df.iloc[:,-1] = ndvi_scaler.fit_transform(img_df.iloc[:,-1].to_numpy().reshape(-1,1)).round()
+            img_arr = img_df.iloc[:, 2:].to_numpy(dtype=np.uint8)
+            dim = (pd.unique(img_df.iloc[:, 0]).size, pd.unique(img_df.iloc[:,1]).size, img_arr.shape[1])
+            # reshape into 8x7x13
+            ok = False
+            try:
+                test = img_arr.reshape(dim)
+                ok = True
+            except ValueError:
+                print(f'i={i}: could not reshape due to missing values because of cloud filter')
+                missing.append(i)
+                continue
+            # convert into 7x7
+            test2 = ir.reshape_image_array(test, mode, params, size)
+            all_imgs.append(test2)
+    print('missing due to cloud filter:', missing)
