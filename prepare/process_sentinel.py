@@ -73,9 +73,7 @@ def gen_fetch_stmt_and_headers():
     return stmt, headers
 
 
-t_start = '2018-12-01'
-t_end = '2019-08-31'
-def compute_features(t_start, t_end):
+def compute_features(t_start, t_end, part=None):
     """
     Computes min, max, mean, std, lower& upper quartile for the median values of the retrieved band values and the NDVI
     within the passed timeframe (as datestring 'YYYY-MM-DD'). Note that data is only available from ~2018-12-15 to
@@ -83,14 +81,16 @@ def compute_features(t_start, t_end):
     """
     region_to_bounds = {}
     err_rows = []
-    # don't have data for all yet... # pd.unique(bastin_db.dryland_assessment_region)
-    all_regs = ["Australia", "EastSouthAmerica", "HornAfrica", "NorthAmerica", "SouthernAfrica", "SouthWestAsia", "WestSouthAmerica"] 
+    all_regs = pd.unique(bastin_db.dryland_assessment_region)
     for region in all_regs:
         filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
         region_to_bounds[region] = (filtered.index.min(), filtered.index.max() + 1)
     fetch_stmt, new_cols = gen_fetch_stmt_and_headers()
-    bastin_extended = bastin_db.reindex(bastin_db.columns.tolist() + new_cols,axis='columns', copy=True)
+    if part is not None:
+        new_cols = [f"{c}_{part}" for c in new_cols]
     reg_abbr = []
+    ret_df = bastin_db.reindex(bastin_db.columns.tolist() + new_cols,axis='columns', copy=True)
+    ret_df.drop(columns=bastin_db.columns, inplace=True)
     for reg in all_regs:
         reg_abbr.append(''.join(x for x in reg if x.isupper()))
         idx_start = region_to_bounds[reg][0]
@@ -106,18 +106,36 @@ def compute_features(t_start, t_end):
                     raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
                 curr_stmt = fetch_stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
                 data_rows = con.execute(curr_stmt, (t_start, t_end)).fetchall()
-                data_df = pd.DataFrame(data_rows).set_index([0],drop=True)
-                bastin_extended.loc[data_df.index, new_cols] = data_df.to_numpy()
+                data_df = pd.DataFrame(data_rows).set_index([0],drop=True).round(5)
+                ret_df.loc[data_df.index, new_cols] = data_df.to_numpy()
+
             except Exception as e:
                 print(reg, e)
                 err_rows.append(reg)
 
-    print(f'Completed feature extraction.')
+    print(f'Completed feature extraction from {t_start} to {t_end}')
     if len(err_rows) > 0:
         print('Had errors for regions: ', err_rows)
-    bastin_extended[new_cols] = bastin_extended[new_cols].round(5)
-    abbr_str = '-'.join(reg_abbr)
-    bastin_extended.to_csv(db_folder + f'features_{abbr_str}_{t_start}-{t_end}.csv', sep=',')
+    return ret_df
+
+
+def compute_three_seasons_features():
+    """
+    computes the features from the raw postgres data and saves them as CSV. The columns are named as the query function,
+    but with a _0, _1, _2 appended.
+    """
+    date_ranges = (('2018-12-01', '2019-02-28'), ('2019-03-01', '2019-05-31'), ('2019-06-01', '2019-08-31'))
+    all_cols = []
+    all_dfs = []
+    for i, date_range in enumerate(date_ranges):
+        date_df = compute_features(date_range[0], date_range[1], i)
+        all_cols += date_df.columns.to_list()
+        all_dfs.append(date_df)
+    
+    bastin_extended = bastin_db.reindex(bastin_db.columns.tolist() + all_cols,axis='columns', copy=True)
+    for date_df in all_dfs:
+        bastin_extended[date_df.columns] = date_df.to_numpy()
+    bastin_extended.to_parquet(db_folder + f'features_three_months_full.parquet')
 
 
 # todo: standardise data, save the MinMaxScaler for training. Do I still have enough values if I filtering for clouds?
