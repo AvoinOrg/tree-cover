@@ -7,7 +7,7 @@ import sqlite3 as lite
 
 ee.Initialize()
 
-area = "CentralAsia"
+area = "NorthernAfrica"
 start = "2017-06-01"  # only available since 2018-12...
 end = "2019-08-31"
 collection = "COPERNICUS/S2_SR"
@@ -41,17 +41,17 @@ def clean_df(df):
 # SouthWestAsia from 177952 to 198234
 # WestSouthAmerica from 198235 to 213792
 regions = [
-    "Australia", # done - except first 3000
-    "CentralAsia", # running on my pc now.
+    "Australia", # done
+    "CentralAsia", # done
     "EastSouthAmerica", # done
-    "Europe",
+    "Europe", # done
     "HornAfrica", # done
-    "MiddleEast",
+    "MiddleEast", # done
     "NorthAmerica", # done
-    "NorthernAfrica",
-    "Sahel", # running on luca
+    "NorthernAfrica", #running on my laptop
+    "Sahel", # done
     "SouthernAfrica", # done
-    "SouthWestAsia", # running on instance
+    "SouthWestAsia", # done
     "WestSouthAmerica", # done
 ]
 bands = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA10", "QA20", "QA60"]

@@ -73,7 +73,7 @@ def gen_fetch_stmt_and_headers():
     return stmt, headers
 
 
-t_start = '2018-06-01'
+t_start = '2018-12-01'
 t_end = '2019-08-31'
 def compute_features(t_start, t_end):
     """
@@ -84,13 +84,15 @@ def compute_features(t_start, t_end):
     region_to_bounds = {}
     err_rows = []
     # don't have data for all yet... # pd.unique(bastin_db.dryland_assessment_region)
-    all_regs = ["Australia", "EastSouthAmerica", "NorthAmerica", "SouthernAfrica", "WestSouthAmerica"] 
+    all_regs = ["Australia", "EastSouthAmerica", "HornAfrica", "NorthAmerica", "SouthernAfrica", "SouthWestAsia", "WestSouthAmerica"] 
     for region in all_regs:
         filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
         region_to_bounds[region] = (filtered.index.min(), filtered.index.max() + 1)
     fetch_stmt, new_cols = gen_fetch_stmt_and_headers()
     bastin_extended = bastin_db.reindex(bastin_db.columns.tolist() + new_cols,axis='columns', copy=True)
+    reg_abbr = []
     for reg in all_regs:
+        reg_abbr.append(''.join(x for x in reg if x.isupper()))
         idx_start = region_to_bounds[reg][0]
         idx_end = region_to_bounds[reg][1]
         with lite.connect(db_folder + reg + '.db') as con:
@@ -113,11 +115,12 @@ def compute_features(t_start, t_end):
     print(f'Completed feature extraction.')
     if len(err_rows) > 0:
         print('Had errors for regions: ', err_rows)
-    with_features = bastin_extended[new_cols].round(5)
-    with_features.to_csv(db_folder + f'features_{t_start}-{t_end}.csv', sep=',')
+    bastin_extended[new_cols] = bastin_extended[new_cols].round(5)
+    abbr_str = '-'.join(reg_abbr)
+    bastin_extended.to_csv(db_folder + f'features_{abbr_str}_{t_start}-{t_end}.csv', sep=',')
 
 
-# todo: standardise data!!!
+# todo: standardise data, save the MinMaxScaler for training. Do I still have enough values if I filtering for clouds?
 def prepare_image(t_start, t_end):
     reg = 'Australia'
     mode = 'interp'
