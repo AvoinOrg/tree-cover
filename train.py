@@ -9,6 +9,7 @@
 from sklearn import ensemble as en
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 import numpy as np
 import pandas as pd
 import os
@@ -164,15 +165,23 @@ def main():
         p = predict(X_test, model=model)
     else:
         p = predict(X_test, model="load")
+    p[p>0.95] = 0.95
+    p[p<0] = 0
     rmse = round(np.sqrt(sum((p - y_test) ** 2) / len(p)) * 100, 4)
-    r_squared = round(model.score(X_test, y_test, sample_weight=w_test), 4) 
+    r_squared = round(r2_score(y_test, p, sample_weight=w_test),4) 
     print(f"RMSE in %: {rmse}, R^2: {r_squared}")
-    diff = 1/(1+np.exp(-p))-1/(1+np.exp(-y_test))
+    if do_transform:
+        diff = 1/(1+np.exp(-p))-1/(1+np.exp(-y_test))
+    else:
+        diff = p-y_test
     median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
     mean = sum(np.sqrt(diff**2))/len(diff)
     for i in range(0,100):
         print(str(i)+"% percentile : " +str(sorted(np.sqrt(diff**2))[int((len(diff))*i/100)]))
-    plt.plot(sorted(np.sqrt((1/(1+np.exp(-y_test)))**2)))
+    if do_transform:
+        plt.plot(sorted(np.sqrt((1/(1+np.exp(-y_test)))**2)))
+    else:
+        plt.plot(sorted(np.sqrt((y_test**2))))
     plt.plot(sorted(np.sqrt(diff**2)))
     plt.show()
    
