@@ -9,22 +9,24 @@
 from sklearn import ensemble as en
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import numpy as np
 import pandas as pd
 import os
 import joblib as jl
-import time
 import matplotlib.pyplot as plt
+from utils import timer
 
 # global params as I'm too lazy to build a CLI
-do_train = False
+path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # 
 np.random.seed(42)
 w_dir = '/home/dario/_py/tree-cover' # '.' # 
-model_name = "model_landsat_median_sds.joblib" # "model_sentinel_test.joblib" # 
+model_name = "model_landsat_median_sds.joblib" # "model_sentinel_really_stratified.joblib" # 
+
 do_train = True
-do_transform = True
-do_weight = False
+do_transform = True # logarithmic transform
+do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
+do_stratify = False # only take an approximately equal amount for each tree-cover level into account
 
 
 bastin_cols = ['longitude','latitude','dryland_assessment_region','Aridity_zone','land_use_category','tree_cover']
@@ -56,16 +58,16 @@ def prep(X):
     X = pd.get_dummies(X,cat,drop_first=True)
     return X
 
-
+@timer
 def train(X, t, gridsearch=False, weights=None):
     params = {
         "n_estimators": 2000,
         "max_depth": 5,
         "min_samples_split": 3,
         "learning_rate": 0.1,
-        "loss": "ls", #"tobit",
-        #"yu":0.95,
-        #"yl":0.0
+        "loss": "ls", # "tobit", # 
+        #"yl": 0,
+        #"yu": 0.95
     }  # try: 'lad', 'criterion': 'mae'
 #    cat = OneHotEncoder()
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
@@ -93,20 +95,26 @@ def predict(X, model):
     return p
 
 def get_weights(cnt_dict, vec, n_total):
+    """ returns the weights according to the frequency in vec s.t. each value of vec has the same avg weight """
     weights = np.zeros(vec.size)
     for val, cnt in cnt_dict.items():
-        if val == 0.0:
-            add = -0.5
-        elif val == 0.95:
-            add = 0.2
-        else:
-            add = 0.1
-        weights[vec==val] = add + cnt/n_total
+        weights[vec==val] = cnt/n_total
     return weights
+
+def stratify(cnt_dict, X, y, scale=4):
+    """ return a subsample of X and y where each class only appears maximum `scale x the minimum count` """
+    allowed_size = min(cnt_dict.values()) * scale
+    indices = []
+    for val, cnt in cnt_dict.items():
+        if cnt < allowed_size:
+            indices += y[y==val].index.to_list()
+        else:
+            indices += y[y==val].sample(allowed_size).index.to_list()
+    return X.loc[indices], y.loc[indices]
+    
 
 def main():
     os.chdir(w_dir)
-    path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # 
     feat = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B10", "B11", "sr_aerosol", "pixel_qa",
             "radsat_qa", "B1_sd", "B2_sd", "B3_sd", "B4_sd", "B5_sd", "B6_sd", "B7_sd", "B10_sd",
             "B11_sd", "sr_aerosol_sd", "pixel_qa_sd", "radsat_qa_sd",
@@ -149,6 +157,10 @@ def main():
         t[t==1] = 0.9999
         t = np.log(t/(1-t))
     X = prep(X)
+    
+    if do_stratify:
+        X, t = stratify(cnt_dict, X, t)
+        
     X_train, X_test, y_train, y_test = train_test_split(X, t, 
                                                         test_size=0.2,
                                                         random_state=42)
@@ -158,13 +170,12 @@ def main():
         w_test = get_weights(cnt_dict, y_test, t.size)
 
     if do_train:
-        print(f'Starting training at {time.time()}')
-        t_start = time.time()
         model = train(X_train, y_train, weights=w_train)
-        print(f"training model took {(time.time()-t_start)/60} minutes")
         p = predict(X_test, model=model)
+        y_train_pred = predict(X_train, model=model)
     else:
         p = predict(X_test, model="load")
+        y_train_pred = predict(X_train, model="load")
     p[p>0.95] = 0.95
     p[p<0] = 0
     rmse = round(np.sqrt(sum((p - y_test) ** 2) / len(p)) * 100, 4)
@@ -174,6 +185,11 @@ def main():
         diff = 1/(1+np.exp(-p))-1/(1+np.exp(-y_test))
     else:
         diff = p-y_test
+    # overfitting?
+    rmse_train = round(mean_squared_error(y_train, y_train_pred, sample_weight=w_train),4)
+    r_sq_train = round(r2_score(y_train, y_train_pred, sample_weigth=w_train), 4)
+    print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
+    
     median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
     mean = sum(np.sqrt(diff**2))/len(diff)
     for i in range(0,100):

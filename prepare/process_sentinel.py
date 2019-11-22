@@ -11,6 +11,7 @@ from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
+from utils import timer 
 import prepare.image_reshaper as ir
 
 lib_extension_path = '/home/fynn/Apps/anaconda3/include/libsqlitefunctions.so'
@@ -20,6 +21,33 @@ db_folder = 'data/sentinel/'
 val_cols = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9","B11", "B12"]
 csv_cols = ["id", "longitude", "latitude", "time", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA60"]
 fetch_cols = ["id", "longitude", "latitude",  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL"]    
+
+# initialise scaler manually.
+ndvi_scaler = MinMaxScaler(feature_range=(0,255))
+ndvi_scaler.scale_=255/2
+ndvi_scaler.data_min_=-1,
+ndvi_scaler.data_max=1
+ndvi_scaler.min_=255/2
+
+date_ranges = (('2018-12-01', '2019-02-28'), ('2019-03-01', '2019-05-31'), ('2019-06-01', '2019-08-31'))
+# if wanting to look at diff wet/dry for the data that I have
+"""
+region_to_wet = {    "Australia": 0,
+    "CentralAsia",
+    "EastSouthAmerica": 0,
+    "Europe",
+    "HornAfrica": 1,
+    "MiddleEast",
+    "NorthAmerica",
+    "NorthernAfrica": 0,
+    "Sahel",
+    "SouthernAfrica",
+    "SouthWestAsia",
+    "WestSouthAmerica": 0,}
+region_to_try = {}
+"""
+
+region_to_dry = {}
 
 def raw_df_to_db_db(df):
     """
@@ -72,7 +100,6 @@ def gen_fetch_stmt_and_headers():
     headers.append('veg_pc')
     return stmt, headers
 
-
 def compute_features(t_start, t_end, part=None):
     """
     Computes min, max, mean, std, lower& upper quartile for the median values of the retrieved band values and the NDVI
@@ -100,10 +127,10 @@ def compute_features(t_start, t_end, part=None):
             con.load_extension(lib_extension_path)
             print(f'Computing features for {reg} from {t_start} to {t_end}')
             try:
-                # will any be invalid if I just join by date?
-                inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
-                if len(inv_ids) > 0:
-                    raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
+                # will any be invalid if I just join by date? -> no, luckily never happens for this set.
+                # inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
+                # if len(inv_ids) > 0:
+                #     raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
                 curr_stmt = fetch_stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
                 data_rows = con.execute(curr_stmt, (t_start, t_end)).fetchall()
                 data_df = pd.DataFrame(data_rows).set_index([0],drop=True).round(5)
@@ -118,13 +145,12 @@ def compute_features(t_start, t_end, part=None):
         print('Had errors for regions: ', err_rows)
     return ret_df
 
-
+@timer
 def compute_three_seasons_features():
     """
     computes the features from the raw postgres data and saves them as CSV. The columns are named as the query function,
     but with a _0, _1, _2 appended.
     """
-    date_ranges = (('2018-12-01', '2019-02-28'), ('2019-03-01', '2019-05-31'), ('2019-06-01', '2019-08-31'))
     all_cols = []
     all_dfs = []
     for i, date_range in enumerate(date_ranges):
@@ -138,16 +164,14 @@ def compute_three_seasons_features():
     bastin_extended.to_parquet(db_folder + f'features_three_months_full.parquet')
 
 
-# todo: standardise data, save the MinMaxScaler for training. Do I still have enough values if I filtering for clouds?
-def prepare_image(t_start, t_end):
-    reg = 'Australia'
+def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
+    """ Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1] """ 
     mode = 'interp'
     params = ['nearest']
-    size = [7,7]
+    size = [8,7]
     include_ndvi = True
-    ndvi_scaler = MinMaxScaler(feature_range=(0,255))
     missing = []
-    
+
     img_cols = ["TCI_R", "TCI_G", "TCI_B"]
     stmt = "select id, longitude, latitude, " + ', '.join(f'median({b}) as {b}_m' for b in img_cols) 
     if include_ndvi:
@@ -155,7 +179,7 @@ def prepare_image(t_start, t_end):
     stmt += " from sentinel where "
     stmt += "id in ? and (HAS_CLOUDFLAG = 0 and MSK_CLDPRB is NULL or MSK_CLDPRB <0.1 and MSK_SNWPRB < 0.1) and "
     stmt += "date(time, 'unixepoch') between ? and ? group by id, longitude, latitude order by id, longitude, latitude"
-    all_imgs = []
+    
     with lite.connect(db_folder + reg + '.db') as con:
         con.enable_load_extension(True)
         con.load_extension(lib_extension_path)
@@ -165,19 +189,57 @@ def prepare_image(t_start, t_end):
         data_df = pd.DataFrame(data_rows).set_index([0],drop=True)
         for i in pd.unique(data_df.index):
             img_df = data_df.loc[i]
-            img_df.iloc[:,-1] = ndvi_scaler.fit_transform(img_df.iloc[:,-1].to_numpy().reshape(-1,1)).round()
-            img_arr = img_df.iloc[:, 2:].to_numpy(dtype=np.uint8)
-            dim = (pd.unique(img_df.iloc[:, 0]).size, pd.unique(img_df.iloc[:,1]).size, img_arr.shape[1])
-            # reshape into 8x7x13
-            ok = False
             try:
+                img_df.iloc[:,-1] = ndvi_scaler.transform(img_df.iloc[:,-1].to_numpy().reshape(-1,1)).round()
+                img_arr = img_df.iloc[:, 2:].to_numpy(dtype=np.uint8)
+                dim = (pd.unique(img_df.iloc[:, 0]).size, pd.unique(img_df.iloc[:,1]).size, img_arr.shape[1])
                 test = img_arr.reshape(dim)
-                ok = True
             except ValueError:
                 print(f'i={i}: could not reshape due to missing values because of cloud filter')
                 missing.append(i)
                 continue
-            # convert into 7x7
-            test2 = ir.reshape_image_array(test, mode, params, size)
-            all_imgs.append(test2)
-    print('missing due to cloud filter:', missing)
+            # convert into 8x7 if necessary
+            reshaped = ir.reshape_image_array(test, mode, params, size)
+            img_row = prepare_img_for_log_regression(reshaped)
+            full_df.iloc[i, 6:] = img_row
+    print(f'{len(missing)} images are missing due to cloud filter: {missing}')
+    return full_df
+
+def prepare_img_for_log_regression(img: np.array):
+    """ transforms the image into single values for each pixel in range [-1,1] """ 
+    return ndvi_scaler.inverse_transform(img.reshape(1, 8*7*4))[0]
+    
+# wet season & summer in OZ
+t_start = '2018-12-01'
+t_end = '2019-02-28'
+@timer
+def generate_RGB_ndvi_raw_data():
+    """ 
+    generates the df with the raw band values scaled to -1, 1 for logistic regression. The columns are named according
+    to the schema: {band name}_{x_index}_{y_index} where x and y start at the top left corner of the image.
+    """
+    bands = ["R", "G", "B", "ndvi"]
+    col_names = []
+    for lon_idx in range(8):
+        for lat_idx in range(7):
+            for band in bands:
+                col_names.append(f'{band}_{lon_idx}_{lat_idx}')
+        
+    region_to_bounds = {}
+    # let's take regions during wet season for starters.
+    all_regs = ['Australia', 'SouthernAfrica', 'NorthAfrica', "EastSouthAmerica", "WestSouthAmerica"]  
+    # pd.unique(bastin_db.dryland_assessment_region)
+    for region in all_regs:
+        filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
+        region_to_bounds[region] = (filtered.index.min(), filtered.index.max() + 1)
+
+    ret_df = bastin_db.reindex(bastin_db.columns.tolist() + col_names,axis='columns', copy=True)
+    for reg in all_regs:
+        idx_start = region_to_bounds[reg][0]
+        idx_end = region_to_bounds[reg][1]
+        ret_df = prepare_image_data(t_start, t_end, reg, idx_start, idx_end, ret_df)
+    ret_df.to_parquet(db_folder + f'features_WetSeason_OZ-SA-NA-ESA-WSA.parquet')
+
+        
+
+    

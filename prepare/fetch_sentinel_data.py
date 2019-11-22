@@ -41,18 +41,18 @@ def clean_df(df):
 # SouthWestAsia from 177952 to 198234
 # WestSouthAmerica from 198235 to 213792
 regions = [
-    "Australia", # done
-    "CentralAsia", # done
-    "EastSouthAmerica", # done
-    "Europe", # done
-    "HornAfrica", # done
-    "MiddleEast", # done
-    "NorthAmerica", # done
-    "NorthernAfrica", #running on my laptop
-    "Sahel", # done
-    "SouthernAfrica", # done
-    "SouthWestAsia", # done
-    "WestSouthAmerica", # done
+    "Australia",
+    "CentralAsia",
+    "EastSouthAmerica",
+    "Europe",
+    "HornAfrica",
+    "MiddleEast",
+    "NorthAmerica",
+    "NorthernAfrica",
+    "Sahel",
+    "SouthernAfrica",
+    "SouthWestAsia",
+    "WestSouthAmerica",
 ]
 bands = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA10", "QA20", "QA60"]
 band_types = ["uint32"]*14 + ["uint8"]*6 + ["uint32"]*3
