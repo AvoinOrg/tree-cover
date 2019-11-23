@@ -176,8 +176,12 @@ def main():
     else:
         p = predict(X_test, model="load")
         y_train_pred = predict(X_train, model="load")
+    # handle overshooting
     p[p>0.95] = 0.95
     p[p<0] = 0
+    y_train_pred[y_train_pred>0.95] = 0.95
+    y_train_pred[y_train_pred<0] = 0
+    
     rmse = round(np.sqrt(sum((p - y_test) ** 2) / len(p)) * 100, 4)
     r_squared = round(r2_score(y_test, p, sample_weight=w_test),4) 
     print(f"RMSE in %: {rmse}, R^2: {r_squared}")
@@ -186,8 +190,8 @@ def main():
     else:
         diff = p-y_test
     # overfitting?
-    rmse_train = round(mean_squared_error(y_train, y_train_pred, sample_weight=w_train),4)
-    r_sq_train = round(r2_score(y_train, y_train_pred, sample_weigth=w_train), 4)
+    rmse_train = round(np.sqrt(mean_squared_error(y_train, y_train_pred, sample_weight=w_train)),4)
+    r_sq_train = round(r2_score(y_train, y_train_pred, sample_weight=w_train), 4)
     print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
     
     median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]

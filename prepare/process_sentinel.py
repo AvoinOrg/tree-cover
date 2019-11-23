@@ -238,7 +238,7 @@ def generate_RGB_ndvi_raw_data():
         idx_start = region_to_bounds[reg][0]
         idx_end = region_to_bounds[reg][1]
         ret_df = prepare_image_data(t_start, t_end, reg, idx_start, idx_end, ret_df)
-    ret_df.to_parquet(db_folder + f'features_WetSeason_OZ-SA-NA-ESA-WSA.parquet')
+    ret_df.to_parquet(db_folder + f'features_WetSeason_test.parquet')
 
         
 
