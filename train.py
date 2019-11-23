@@ -19,10 +19,10 @@ import matplotlib.pyplot as plt
 from utils import timer
 
 # global params as I'm too lazy to build a CLI
-path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # "data/features_WetSeason_test.parquet" # 
+path = "data/df_empty_dummy.csv" # 'data/features_three_months_improved.parquet' #  
 np.random.seed(42)
 w_dir = '/home/dario/_py/tree-cover' # '.' # 
-model_name = "model_landsat_median_sds.joblib" # "model_sentinel_scaled_svr.joblib" # 
+model_name = "model_landsat_median_sds.joblib" # "model_sentinel_enhanced_svr_rbf_0.5.joblib" # 
 
 do_train = True
 do_transform = True # logarithmic transform of y
@@ -30,6 +30,7 @@ do_scale_X = False # use a MinMaxScaler to bring the data into a range bewteen -
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
 do_stratify = False # only take an approximately equal amount for each tree-cover level into account
 method = 'boost' # 'svr' # 
+kernel = 'rbf' # for svr
 
 
 bastin_cols = ['longitude','latitude','dryland_assessment_region','Aridity_zone','land_use_category','tree_cover']
@@ -88,7 +89,7 @@ def train_svr(X, y, weights=None):
     trains based on svm. scales in len(y)^2, so only use with do_stratify=True. Advantage of SVM: useful in high-dim
     spaces, so might use it for the raw img data. Not scale invariant! Must scale x to [-1,+1] e.g.
     """ 
-    svr = SVR(kernel='rbf', C=0.9, cache_size=1000, gamma='scale')
+    svr = SVR(kernel=kernel, C=0.5, cache_size=1000, gamma='scale')
     svr.fit(X, y, sample_weight=weights)
     jl.dump(svr, model_name)
     return svr
@@ -216,8 +217,8 @@ def main():
     X = prep(X)
     
     if do_scale_X:
-        mm_scaler = MinMaxScaler()
-        X = mm_scaler.fit_transform(X)
+        mm_scaler = MinMaxScaler(feature_range=(-1,1))
+        X.iloc[:,:] = mm_scaler.fit_transform(X)
     X_train, X_test, y_train, y_test = train_test_split(X, t, 
                                                         test_size=0.2,
                                                         random_state=42)

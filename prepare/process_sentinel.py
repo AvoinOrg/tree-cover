@@ -14,7 +14,8 @@ import numpy as np
 from utils import timer 
 import prepare.image_reshaper as ir
 
-lib_extension_path = '/home/fynn/Apps/anaconda3/include/libsqlitefunctions.so'
+# gcc -g -fPIC -shared extension-functions.c -o libsqlitefunctions.so -lm
+lib_extension_path = 'libsqlitefunctions.so'
 bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
 db_folder = 'data/sentinel/'
 
@@ -176,8 +177,8 @@ def enhance_three_seasons_features():
     
     
     improved_df = pd.read_parquet('data/features_three_months_improved.parquet')
-    # for the most useful bands, add global diff ('B12', 'B4', 'NDVI') already done
-    for b in ('B1', 'B2', 'B3'):
+    # for the most useful bands, add global diff
+    for b in ('B1', 'B2', 'B12', 'B4', 'NDVI', 'B3'):
         for f in funs:
             if b in ('B1', 'B2', 'B3') and f in ('lower_quartile', 'upper_quartile', 'avg'):
                 continue
