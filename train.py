@@ -10,6 +10,7 @@ from sklearn import ensemble as en
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.svm import SVR
 import numpy as np
 import pandas as pd
 import os
@@ -21,12 +22,13 @@ from utils import timer
 path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # 
 np.random.seed(42)
 w_dir = '/home/dario/_py/tree-cover' # '.' # 
-model_name = "model_landsat_median_sds.joblib" # "model_sentinel_really_stratified.joblib" # 
+model_name = "model_landsat_median_sds.joblib" # "model_sentinel_logtrans_stratified_svr.joblib" # 
 
 do_train = True
 do_transform = True # logarithmic transform
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
-do_stratify = False # only take an approximately equal amount for each tree-cover level into account
+do_stratify = True # only take an approximately equal amount for each tree-cover level into account
+method = 'boost' # 'svr' # 
 
 
 bastin_cols = ['longitude','latitude','dryland_assessment_region','Aridity_zone','land_use_category','tree_cover']
@@ -65,10 +67,8 @@ def train(X, t, gridsearch=False, weights=None):
         "max_depth": 5,
         "min_samples_split": 3,
         "learning_rate": 0.1,
-        "loss": "ls", # "tobit", # 
-        #"yl": 0,
-        #"yu": 0.95
-    }  # try: 'lad', 'criterion': 'mae'
+        "loss": "ls" # "huber", # 
+    }
 #    cat = OneHotEncoder()
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
 #    X_cat = cat.fit_transform(X_cat)
@@ -81,6 +81,13 @@ def train(X, t, gridsearch=False, weights=None):
     jl.dump(clf, model_name)
     return clf
 
+@timer
+def train_svr(X, y, weights=None):
+    """ trains based on svm. scales in len(y)^2, so only use with do_stratify=True """ 
+    svr = SVR(kernel='rbf', C=0.7, cache_size=1000, gamma='auto')
+    svr.fit(X, y, sample_weight=weights)
+    jl.dump(svr, model_name)
+    return svr
 
 def predict(X, model):
     # cat = OneHotEncoder()
@@ -151,16 +158,16 @@ def main():
         t, X, cnt_dict = load_data(path=path)
     else:
         t, X, cnt_dict = load_data(path=path, cols=feat)
+    
+    if do_stratify:
+        X, t = stratify(cnt_dict, X, t)
         
     if do_transform:
         t[t==0] = 0.0001
         t[t==1] = 0.9999
         t = np.log(t/(1-t))
-    X = prep(X)
-    
-    if do_stratify:
-        X, t = stratify(cnt_dict, X, t)
         
+    X = prep(X)
     X_train, X_test, y_train, y_test = train_test_split(X, t, 
                                                         test_size=0.2,
                                                         random_state=42)
@@ -170,7 +177,10 @@ def main():
         w_test = get_weights(cnt_dict, y_test, t.size)
 
     if do_train:
-        model = train(X_train, y_train, weights=w_train)
+        if method == 'boost':
+            model = train(X_train, y_train, weights=w_train)
+        elif method == 'svr':
+            model = train_svr(X_train, y_train, weights=w_train)
         p = predict(X_test, model=model)
         y_train_pred = predict(X_train, model=model)
     else:

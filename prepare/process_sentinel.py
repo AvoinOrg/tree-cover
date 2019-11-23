@@ -203,7 +203,6 @@ def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
             img_row = prepare_img_for_log_regression(reshaped)
             full_df.iloc[i, 6:] = img_row
     print(f'{len(missing)} images are missing due to cloud filter: {missing}')
-    return full_df
 
 def prepare_img_for_log_regression(img: np.array):
     """ transforms the image into single values for each pixel in range [-1,1] """ 
@@ -227,7 +226,7 @@ def generate_RGB_ndvi_raw_data():
         
     region_to_bounds = {}
     # let's take regions during wet season for starters.
-    all_regs = ['Australia', 'SouthernAfrica', 'NorthAfrica', "EastSouthAmerica", "WestSouthAmerica"]  
+    all_regs = ['Australia', 'SouthernAfrica', 'NorthernAfrica', "EastSouthAmerica", "WestSouthAmerica"]  
     # pd.unique(bastin_db.dryland_assessment_region)
     for region in all_regs:
         filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
@@ -237,9 +236,9 @@ def generate_RGB_ndvi_raw_data():
     for reg in all_regs:
         idx_start = region_to_bounds[reg][0]
         idx_end = region_to_bounds[reg][1]
-        ret_df = prepare_image_data(t_start, t_end, reg, idx_start, idx_end, ret_df)
+        prepare_image_data(t_start, t_end, reg, idx_start, idx_end, ret_df)
     ret_df.to_parquet(db_folder + f'features_WetSeason_test.parquet')
 
         
-
+generate_RGB_ndvi_raw_data()
     
