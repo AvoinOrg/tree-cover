@@ -22,6 +22,8 @@ val_cols = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9","B11", "
 csv_cols = ["id", "longitude", "latitude", "time", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA60"]
 fetch_cols = ["id", "longitude", "latitude",  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL"]    
 
+funs = ['min', 'max', 'avg', 'stdev', 'median', 'lower_quartile', 'upper_quartile']
+
 # initialise scaler manually.
 ndvi_scaler = MinMaxScaler(feature_range=(0,255))
 ndvi_scaler.scale_=255/2
@@ -86,7 +88,6 @@ def import_full_csv():
         
 def gen_fetch_stmt_and_headers():
     stmt = "select id, "
-    funs = ['min', 'max', 'avg', 'stdev', 'median', 'lower_quartile', 'upper_quartile']
     headers = []
     for band in val_cols + ['NDVI']:
         for fun in funs:
@@ -162,7 +163,27 @@ def compute_three_seasons_features():
     for date_df in all_dfs:
         bastin_extended[date_df.columns] = date_df.to_numpy()
     bastin_extended.to_parquet(db_folder + f'features_three_months_full.parquet')
-
+    
+# todo: scale them all -> but better do that in the train method.
+def enhance_three_seasons_features():
+    """ using the importances from the boosted tree: exclude useless features, calculated some differences. """
+    orig_df = pd.read_parquet('data/features_three_months_full.parquet')
+    
+    # these were not so useful
+    drop_avg_q = [c for c in orig_df.columns if ('quartile' in c or 'avg' in c) and not any(b in c for b in ('B12', 'B4', 'NDVI'))]
+    drop_bands = [c for c in orig_df.columns if any(b in c for b in ('veg_pc', 'B7', 'B8', 'B11', 'B6'))]
+    improved_df = orig_df[orig_df.columns.symmetric_difference(drop_avg_q+drop_bands)]
+    
+    
+    improved_df = pd.read_parquet('data/features_three_months_improved.parquet')
+    # for the most useful bands, add global diff ('B12', 'B4', 'NDVI') already done
+    for b in ('B1', 'B2', 'B3'):
+        for f in funs:
+            if b in ('B1', 'B2', 'B3') and f in ('lower_quartile', 'upper_quartile', 'avg'):
+                continue
+            row_names = [f'{f}({b}_m)_{i}' for i in range(3)]
+            improved_df.loc[:,f'diff_{f}({b})'] = improved_df.apply(lambda row: np.abs(np.max(row[row_names])-np.min(row[row_names])), axis=1)
+    improved_df.to_parquet('data/features_three_months_improved.parquet')    
 
 def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
     """ Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1] """ 
@@ -194,17 +215,17 @@ def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
                 img_arr = img_df.iloc[:, 2:].to_numpy(dtype=np.uint8)
                 dim = (pd.unique(img_df.iloc[:, 0]).size, pd.unique(img_df.iloc[:,1]).size, img_arr.shape[1])
                 test = img_arr.reshape(dim)
-            except ValueError:
+            except (ValueError, pd.core.indexing.IndexingError): # or did sth else go wrong if just 1 value???
                 print(f'i={i}: could not reshape due to missing values because of cloud filter')
                 missing.append(i)
                 continue
             # convert into 8x7 if necessary
             reshaped = ir.reshape_image_array(test, mode, params, size)
-            img_row = prepare_img_for_log_regression(reshaped)
+            img_row = prepare_img_for_svm(reshaped)
             full_df.iloc[i, 6:] = img_row
     print(f'{len(missing)} images are missing due to cloud filter: {missing}')
 
-def prepare_img_for_log_regression(img: np.array):
+def prepare_img_for_svm(img: np.array):
     """ transforms the image into single values for each pixel in range [-1,1] """ 
     return ndvi_scaler.inverse_transform(img.reshape(1, 8*7*4))[0]
     

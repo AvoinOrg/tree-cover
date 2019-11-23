@@ -7,7 +7,7 @@
                 should be available as well.
 """
 from sklearn import ensemble as en
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.svm import SVR
@@ -19,15 +19,16 @@ import matplotlib.pyplot as plt
 from utils import timer
 
 # global params as I'm too lazy to build a CLI
-path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # 
+path = "data/df_empty_dummy.csv" # 'data/features_three_months_full.parquet' # "data/features_WetSeason_test.parquet" # 
 np.random.seed(42)
 w_dir = '/home/dario/_py/tree-cover' # '.' # 
-model_name = "model_landsat_median_sds.joblib" # "model_sentinel_logtrans_stratified_svr.joblib" # 
+model_name = "model_landsat_median_sds.joblib" # "model_sentinel_scaled_svr.joblib" # 
 
 do_train = True
-do_transform = True # logarithmic transform
+do_transform = True # logarithmic transform of y
+do_scale_X = False # use a MinMaxScaler to bring the data into a range bewteen -1 and 1
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
-do_stratify = True # only take an approximately equal amount for each tree-cover level into account
+do_stratify = False # only take an approximately equal amount for each tree-cover level into account
 method = 'boost' # 'svr' # 
 
 
@@ -53,7 +54,7 @@ def load_data(path, cols=None):
     # X_train, t_train = X[:split], t[:split]
     # X_test, t_test = X[split:], t[split:]
     # return X_train, t_train, X_test, t_test
-    return t, X, cover_to_count
+    return t, X, cover_to_count, cols
 
 def prep(X):
     cat = X.columns[X.dtypes == "object"]
@@ -83,8 +84,11 @@ def train(X, t, gridsearch=False, weights=None):
 
 @timer
 def train_svr(X, y, weights=None):
-    """ trains based on svm. scales in len(y)^2, so only use with do_stratify=True """ 
-    svr = SVR(kernel='rbf', C=0.7, cache_size=1000, gamma='auto')
+    """ 
+    trains based on svm. scales in len(y)^2, so only use with do_stratify=True. Advantage of SVM: useful in high-dim
+    spaces, so might use it for the raw img data. Not scale invariant! Must scale x to [-1,+1] e.g.
+    """ 
+    svr = SVR(kernel='rbf', C=0.9, cache_size=1000, gamma='scale')
     svr.fit(X, y, sample_weight=weights)
     jl.dump(svr, model_name)
     return svr
@@ -99,7 +103,7 @@ def predict(X, model):
         p = model.predict(X)
     else:
         p = model.predict(X)
-    return p
+    return p, model
 
 def get_weights(cnt_dict, vec, n_total):
     """ returns the weights according to the frequency in vec s.t. each value of vec has the same avg weight """
@@ -119,6 +123,48 @@ def stratify(cnt_dict, X, y, scale=4):
             indices += y[y==val].sample(allowed_size).index.to_list()
     return X.loc[indices], y.loc[indices]
     
+
+def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train):
+    """ calculates RMSE, R^2, mean and median error; prints & plots error percentiles """
+    if do_transform:
+        # bt means back transformed
+        y_t_bt = 1/(1+np.exp(-y_test))
+        y_train_bt = 1/(1+np.exp(-y_train))
+        y_train_pred_bt = 1/(1+np.exp(-y_train_pred))
+        p_bt = 1/(1+np.exp(-p))
+        diff = p_bt-y_t_bt
+    else:
+        diff = p-y_test
+        y_t_bt = y_test
+        p_bt = p
+        y_train_bt = y_train
+        y_train_pred_bt = y_train_pred
+        
+    # handle overshooting
+    p_bt[p_bt>0.95] = 0.95
+    p_bt[p_bt<0] = 0
+    y_train_pred_bt[y_train_pred_bt>0.95] = 0.95
+    y_train_pred_bt[y_train_pred_bt<0] = 0
+    
+    rmse = round(np.sqrt(mean_squared_error(y_t_bt, p_bt)), 4)
+    r_squared = round(r2_score(y_t_bt, p_bt, sample_weight=w_test),4) 
+    print(f"For model: ", model_name)
+    print(f"Test set - RMSE: {rmse}, R^2: {r_squared}")
+    
+    # overfitting?
+    rmse_train = round(np.sqrt(mean_squared_error(y_train_bt, y_train_pred_bt, sample_weight=w_train)),4)
+    r_sq_train = round(r2_score(y_train_bt, y_train_pred_bt, sample_weight=w_train), 4)
+    print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
+    
+    median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
+    mean = sum(np.sqrt(diff**2))/len(diff)
+    for i in range(0,100, 10):
+        print(str(i)+"% percentile : " +str(sorted(np.sqrt(diff**2))[int((len(diff))*i/100)]))
+    print(f'Median error: {median:4f}, Mean error: {mean:4f}')
+    plt.plot(sorted(np.sqrt(y_t_bt)**2))
+    plt.plot(sorted(np.sqrt(diff**2)))
+    plt.show()
+
 
 def main():
     os.chdir(w_dir)
@@ -155,9 +201,9 @@ def main():
     #    'stdev(NDVI_m)', 'median(NDVI_m)', 'lower_quartile(NDVI_m)',
     #    'upper_quartile(NDVI_m)', 'veg_pc']
     if path.endswith('.parquet'):
-        t, X, cnt_dict = load_data(path=path)
+        t, X, cnt_dict, feat = load_data(path=path)
     else:
-        t, X, cnt_dict = load_data(path=path, cols=feat)
+        t, X, cnt_dict, feat = load_data(path=path, cols=feat)
     
     if do_stratify:
         X, t = stratify(cnt_dict, X, t)
@@ -168,6 +214,10 @@ def main():
         t = np.log(t/(1-t))
         
     X = prep(X)
+    
+    if do_scale_X:
+        mm_scaler = MinMaxScaler()
+        X = mm_scaler.fit_transform(X)
     X_train, X_test, y_train, y_test = train_test_split(X, t, 
                                                         test_size=0.2,
                                                         random_state=42)
@@ -181,40 +231,46 @@ def main():
             model = train(X_train, y_train, weights=w_train)
         elif method == 'svr':
             model = train_svr(X_train, y_train, weights=w_train)
-        p = predict(X_test, model=model)
-        y_train_pred = predict(X_train, model=model)
+        p, model = predict(X_test, model=model)
+        y_train_pred, _ = predict(X_train, model=model)
     else:
-        p = predict(X_test, model="load")
-        y_train_pred = predict(X_train, model="load")
-    # handle overshooting
-    p[p>0.95] = 0.95
-    p[p<0] = 0
-    y_train_pred[y_train_pred>0.95] = 0.95
-    y_train_pred[y_train_pred<0] = 0
+        p, model = predict(X_test, model="load")
+        y_train_pred, _ = predict(X_train, model="load")
     
-    rmse = round(np.sqrt(sum((p - y_test) ** 2) / len(p)) * 100, 4)
-    r_squared = round(r2_score(y_test, p, sample_weight=w_test),4) 
-    print(f"RMSE in %: {rmse}, R^2: {r_squared}")
-    if do_transform:
-        diff = 1/(1+np.exp(-p))-1/(1+np.exp(-y_test))
-    else:
-        diff = p-y_test
-    # overfitting?
-    rmse_train = round(np.sqrt(mean_squared_error(y_train, y_train_pred, sample_weight=w_train)),4)
-    r_sq_train = round(r2_score(y_train, y_train_pred, sample_weight=w_train), 4)
-    print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
+    evaluate(p, y_train_pred, y_test, y_train, w_test, w_train)
     
-    median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
-    mean = sum(np.sqrt(diff**2))/len(diff)
-    for i in range(0,100):
-        print(str(i)+"% percentile : " +str(sorted(np.sqrt(diff**2))[int((len(diff))*i/100)]))
-    if do_transform:
-        plt.plot(sorted(np.sqrt((1/(1+np.exp(-y_test)))**2)))
-    else:
-        plt.plot(sorted(np.sqrt((y_test**2))))
-    plt.plot(sorted(np.sqrt(diff**2)))
-    plt.show()
-   
+    if do_stratify:
+        # check the error on the discarded samples
+        if path.endswith('.parquet'):
+            t_full, X_full, cnt_dict, feat = load_data(path=path)
+        else:
+            t_full, X_full, cnt_dict, feat = load_data(path=path, cols=feat)
+        X_rest = X_full.loc[X_full.index.symmetric_difference(X.index)]
+        y_rest = t_full.loc[X_full.index.symmetric_difference(X.index)]
+        if do_transform:
+            y_rest[y_rest==0] = 0.0001
+            y_rest[y_rest==1] = 0.9999
+            y_rest = np.log(y_rest/(1-y_rest))
+        p_rest, _ = predict(X_rest, model=model)
+        if do_transform:
+            # bt means back transformed
+            p_r_bt = 1/(1+np.exp(-p_rest))
+            y_r_bt = 1/(1+np.exp(-y_rest))
+        else:
+            p_r_bt = p_rest
+            y_r_bt = y_rest
+        
+        rmse_train = round(np.sqrt(mean_squared_error(y_r_bt, p_r_bt)),4)
+        r_sq_train = round(r2_score(y_r_bt, p_r_bt), 4)
+        print(f"On left out data - RMSE: {rmse_train}, R^2: {r_sq_train}")
+
+    # print sorted feature importances
+    if method == 'boost':
+        feat_df=pd.DataFrame(zip(feat, model.feature_importances_), columns=['feature', 'importance'])
+        feat_df.sort_values('importance', ascending=False, inplace=True)
+        feat_df.reset_index(inplace=True)
+        print(feat_df[['feature', 'importance']].to_string())
+    
 
 if __name__ == "__main__":
     main()
