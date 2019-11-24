@@ -10,12 +10,14 @@ import sqlite3 as lite
 from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+import pyarrow as pa
 
 from utils import timer 
 import prepare.image_reshaper as ir
 
+# you need to compile the included SQLite extension and then specify its location here.
 # gcc -g -fPIC -shared extension-functions.c -o libsqlitefunctions.so -lm
-lib_extension_path = 'libsqlitefunctions.so'
+lib_extension_path = './libsqlitefunctions.so'
 bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
 db_folder = 'data/sentinel/'
 
@@ -150,7 +152,7 @@ def compute_features(t_start, t_end, part=None):
 @timer
 def compute_three_seasons_features():
     """
-    computes the features from the raw postgres data and saves them as CSV. The columns are named as the query function,
+    computes the features from the raw postgres data and saves them. The columns are named as the query function,
     but with a _0, _1, _2 appended.
     """
     all_cols = []
@@ -185,6 +187,92 @@ def enhance_three_seasons_features():
             row_names = [f'{f}({b}_m)_{i}' for i in range(3)]
             improved_df.loc[:,f'diff_{f}({b})'] = improved_df.apply(lambda row: np.abs(np.max(row[row_names])-np.min(row[row_names])), axis=1)
     improved_df.to_parquet('data/features_three_months_improved.parquet')    
+    
+@timer
+def compute_monthly_features():
+    """ 
+    exports the vegetation index & band 1,5,9,12 - based features. Saves them both by month for the LSTM and aggregated
+    for the GBR (min, max, median) in the hope it would pick up changes over the year from that.
+    """
+    region_to_bounds = {}
+    err_rows = []
+    all_regs = pd.unique(bastin_db.dryland_assessment_region)
+    for region in all_regs:
+        filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
+        region_to_bounds[region] = (filtered.index.min(), filtered.index.max() + 1)
+    fetch_stmt, new_cols = gen_temporal_fetch_stmt_and_headers()
+    min_cols = [f'{col}_MIN' for col in new_cols]
+    max_cols = [f'{col}_MAX' for col in new_cols]
+    med_cols = [f'{col}_MED' for col in new_cols]
+    gbr_cols = min_cols + max_cols + med_cols
+
+    ret_df = bastin_db.reindex(bastin_db.columns.tolist() + gbr_cols,axis='columns', copy=True)
+    ret_df.drop(columns=bastin_db.columns, inplace=True)
+    full_data = None
+    for reg in all_regs:
+        idx_start = region_to_bounds[reg][0]
+        idx_end = region_to_bounds[reg][1]
+        with lite.connect(db_folder + reg + '.db') as con:
+            con.enable_load_extension(True)
+            con.load_extension(lib_extension_path)
+            print(f'Computing features for {reg}')
+            try:
+                # will any be invalid if I just join by date? -> no, luckily never happens for this set.
+                # inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
+                # if len(inv_ids) > 0:
+                #     raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
+                curr_stmt = fetch_stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
+                data_rows = con.execute(curr_stmt).fetchall()
+                data_df = pd.DataFrame(data_rows).set_index([0],drop=True).round(5)
+                data_df.columns = ['year_month'] + new_cols
+                
+                # extract min, max, median from the fetched data, leaving out the first column (year_month)
+                grouped = data_df.iloc[:,1:].groupby([0])
+                uniq_idx = pd.unique(data_df.index)
+                ret_df.loc[uniq_idx, min_cols] = grouped.min().to_numpy()
+                ret_df.loc[uniq_idx, max_cols] = grouped.max().to_numpy()
+                ret_df.loc[uniq_idx, med_cols] = grouped.median().to_numpy()
+
+                data_df['id'] = data_df.index
+                if full_data is None:
+                    full_data = data_df
+                else:
+                    full_data = full_data.append(data_df, ignore_index=True)
+                
+            except Exception as e:
+                print(reg, e)
+                err_rows.append(reg)
+
+    if len(err_rows) > 0:
+        print('Had errors for regions: ', err_rows)
+    ret_df.to_parquet('data/vegetation_index_features_aggregated.parquet', index=True)
+    full_data.to_parquet('data/vegetation_index_features_full.parquet', index=False)
+    print(f'Completed feature extraction.')
+
+    
+    
+def gen_temporal_fetch_stmt_and_headers():
+    """ fetches the statistics over the image region based on the monthly medians + the calculated indices """
+    # blue: B2, green: B3, red: B4, NIR: B8
+    stmt = "select id, year_month"
+    headers = []
+    cols = ["B1", "B5", "B9", "B12"]
+    for band in cols  + ['ENDVI', "NDVI", "GDVI", "MSAVI2", "SAVI"]:
+        for fun in ['min', 'max', 'avg','lower_quartile', 'upper_quartile', 'stdev']:
+            stmt += f', {fun}({band}_m)'
+            headers.append(f'{fun}({band}_m)')
+    stmt += " from (select "
+    stmt += "id, strftime('%Y-%m', time, 'unixepoch') as year_month, longitude, latitude, " 
+    stmt += ', '.join(f'median({b}) as {b}_m' for b in cols) 
+    stmt += ", (1.0*(median(B8)+median(B3))-2*median(B2)) / (median(B8)+median(B3)+2*median(B2)) as ENDVI_m"
+    stmt += ", 1.0*(median(B8)-median(B4))/(median(B8)+median(B4)) as NDVI_m "
+    stmt += ", 1.0*median(B8)-median(B3) as GDVI_m "
+    stmt += ", 0.5*((2*median(B8)+1)-sqrt( square(2*median(B8)+1)-8*(median(B8)-median(B4) ))) as MSAVI2_m"
+    stmt += ", 1.5*(median(B8)-median(B4))/(median(B8)+median(B4)+0.5) as SAVI_m" # L = 0.5
+    stmt += " from sentinel where"
+    stmt += " id in ? and (HAS_CLOUDFLAG = 0 and MSK_CLDPRB is null or MSK_CLDPRB <0.1 and MSK_SNWPRB < 0.1)"
+    stmt += " group by year_month, id, longitude, latitude) group by id, year_month"
+    return stmt, headers
 
 def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
     """ Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1] """ 
@@ -229,6 +317,7 @@ def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
 def prepare_img_for_svm(img: np.array):
     """ transforms the image into single values for each pixel in range [-1,1] """ 
     return ndvi_scaler.inverse_transform(img.reshape(1, 8*7*4))[0]
+
     
 # wet season & summer in OZ
 t_start = '2018-12-01'
@@ -262,5 +351,3 @@ def generate_RGB_ndvi_raw_data():
     ret_df.to_parquet(db_folder + f'features_WetSeason_test.parquet')
 
         
-generate_RGB_ndvi_raw_data()
-    
