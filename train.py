@@ -86,7 +86,7 @@ def train(X, t, gridsearch=False, weights=None):
                           n_jobs=4, verbose=1)
         cv.fit(X,t)
         #os.rename('model.joblib', 'model.joblib.bk')
-        jl.dump(cv, "cv_model_landsat_median_sds.joblib")
+        jl.dump(cv, model_name)
         return cv 
     else:
         clf = en.GradientBoostingRegressor(**params)
