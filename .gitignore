@@ -4,11 +4,14 @@
 .idea/
 model.joblib.bk
 
+*.joblib
+data/*.parquet
 data/*.csv
 data/*.idx
 data/20*
 data/by_region
 data/sentinel
+data/MNIST
 
 # General Python stuff, copied from SO
 # Byte-compiled / optimized / DLL files

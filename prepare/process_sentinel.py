@@ -10,7 +10,6 @@ import sqlite3 as lite
 from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
-import pyarrow as pa
 
 from utils import timer 
 import prepare.image_reshaper as ir
@@ -20,7 +19,6 @@ import prepare.image_reshaper as ir
 lib_extension_path = './libsqlitefunctions.so'
 bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
 db_folder = 'data/sentinel/'
-
 val_cols = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9","B11", "B12"]
 csv_cols = ["id", "longitude", "latitude", "time", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA60"]
 fetch_cols = ["id", "longitude", "latitude",  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL"]    
@@ -195,19 +193,19 @@ def compute_monthly_features():
     for the GBR (min, max, median) in the hope it would pick up changes over the year from that.
     """
     region_to_bounds = {}
+    calc_all = True
     err_rows = []
     all_regs = pd.unique(bastin_db.dryland_assessment_region)
     for region in all_regs:
         filtered = bastin_db[bastin_db["dryland_assessment_region"] == region]
         region_to_bounds[region] = (filtered.index.min(), filtered.index.max() + 1)
-    fetch_stmt, new_cols = gen_temporal_fetch_stmt_and_headers()
+    fetch_stmt, new_cols = gen_temporal_fetch_stmt_and_headers(calc_all)
     min_cols = [f'{col}_MIN' for col in new_cols]
     max_cols = [f'{col}_MAX' for col in new_cols]
     med_cols = [f'{col}_MED' for col in new_cols]
     gbr_cols = min_cols + max_cols + med_cols
 
     ret_df = bastin_db.reindex(bastin_db.columns.tolist() + gbr_cols,axis='columns', copy=True)
-    ret_df.drop(columns=bastin_db.columns, inplace=True)
     full_data = None
     for reg in all_regs:
         idx_start = region_to_bounds[reg][0]
@@ -227,8 +225,8 @@ def compute_monthly_features():
                 data_df.columns = ['year_month'] + new_cols
                 
                 # extract min, max, median from the fetched data, leaving out the first column (year_month)
-                grouped = data_df.iloc[:,1:].groupby([0])
-                uniq_idx = pd.unique(data_df.index)
+                grouped = data_df.iloc[:,1:].groupby([0]) # id
+                uniq_idx = pd.unique(data_df.index) # .id
                 ret_df.loc[uniq_idx, min_cols] = grouped.min().to_numpy()
                 ret_df.loc[uniq_idx, max_cols] = grouped.max().to_numpy()
                 ret_df.loc[uniq_idx, med_cols] = grouped.median().to_numpy()
@@ -245,18 +243,18 @@ def compute_monthly_features():
 
     if len(err_rows) > 0:
         print('Had errors for regions: ', err_rows)
-    ret_df.to_parquet('data/vegetation_index_features_aggregated.parquet', index=True)
-    full_data.to_parquet('data/vegetation_index_features_full.parquet', index=False)
+    ret_df.to_parquet('data/vegetation_index_features_aggregated_all.parquet', index=True)
+    full_data.to_parquet('data/vegetation_index_features_full_all.parquet', index=False)
     print(f'Completed feature extraction.')
 
     
     
-def gen_temporal_fetch_stmt_and_headers():
+def gen_temporal_fetch_stmt_and_headers(use_all = False):
     """ fetches the statistics over the image region based on the monthly medians + the calculated indices """
     # blue: B2, green: B3, red: B4, NIR: B8
     stmt = "select id, year_month"
     headers = []
-    cols = ["B1", "B5", "B9", "B12"]
+    cols = val_cols if use_all else  ["B1", "B5", "B9", "B12"]
     for band in cols  + ['ENDVI', "NDVI", "GDVI", "MSAVI2", "SAVI"]:
         for fun in ['min', 'max', 'avg','lower_quartile', 'upper_quartile', 'stdev']:
             stmt += f', {fun}({band}_m)'
