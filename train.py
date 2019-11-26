@@ -8,7 +8,7 @@
 """
 from sklearn import ensemble as en
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.svm import SVR
 import numpy as np
@@ -19,18 +19,17 @@ import matplotlib.pyplot as plt
 from utils import timer
 
 # global params as I'm too lazy to build a CLI
-path =  'data/vegetation_index_features_aggregated_all.parquet' # 'data/features_three_months_improved.parquet' #  "data/df_empty_dummy.csv" # 
+path = "data/df_empty_dummy.csv" # 'data/features_three_months_improved.parquet' #  
 np.random.seed(42)
-w_dir = '.' # '/home/dario/_py/tree-cover' # 
-model_name = "model_sentinel_monthly_agg_all.joblib" # "model_landsat_median_sds.joblib" # 
+w_dir = '/home/dario/_py/tree-cover' # '.' # 
+model_name = "model.joblib" # "model_sentinel_enhanced_svr_rbf_0.5.joblib" # 
 
 do_train = True
 do_transform = True # logarithmic transform of y
-do_scale_X = True # use a MinMaxScaler to bring the data into a range bewteen -1 and 1
+do_scale_X = False # use a MinMaxScaler to bring the data into a range bewteen -1 and 1
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
 do_stratify = False # only take an approximately equal amount for each tree-cover level into account
 method = 'boost' # 'svr' # 
-target= 'tree_cover' # 'land_use_category'
 kernel = 'rbf' # for svr
 
 
@@ -47,10 +46,10 @@ def load_data(path, cols=None):
     df.dropna(inplace=True)
     df.drop_duplicates(inplace=True)
     df.reset_index(inplace=True)
-    t, X = df[target], df[cols]
+    t, X = df.tree_cover, df[cols]
     cat = X.columns[X.dtypes == "object"]
     X = pd.get_dummies(X,cat,drop_first=True)
-    cover_to_count = df.groupby(target).count().iloc[:,0].to_dict()
+    cover_to_count = df.groupby('tree_cover').count().iloc[:,0].to_dict()
     # t, X = sk.utils.shuffle(df.tree_cover, df[cols], random_state=1)
     # split = int(X.shape[0] * 0.9)
     # X_train, t_train = X[:split], t[:split]
@@ -65,6 +64,13 @@ def prep(X):
 
 @timer
 def train(X, t, gridsearch=False, weights=None):
+    params = {
+        "n_estimators": 550,
+        "max_depth": 8,
+        "min_samples_split": 3,
+        "learning_rate": 0.01,
+        "loss": "ls" # "huber", # 
+    }
 #    cat = OneHotEncoder()
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
 #    X_cat = cat.fit_transform(X_cat)
@@ -83,30 +89,11 @@ def train(X, t, gridsearch=False, weights=None):
         jl.dump(cv, model_name)
         return cv 
     else:
-        if target=='land_use_category':
-            clf = en.GradientBoostingClassifier(loss='deviance', criterion='friedman_mse', init=None,
-                              learning_rate=0.01, max_depth=8,  n_estimators=550,
-                              max_features=None, max_leaf_nodes=None,
-                              min_impurity_decrease=0.0, min_impurity_split=None,
-                              min_samples_leaf=1, min_samples_split=2,
-                              min_weight_fraction_leaf=0.0,
-                              n_iter_no_change=None, presort='auto',
-                              random_state=None, subsample=1.0, tol=0.0001,
-                              validation_fraction=0.1, verbose=0, warm_start=False)
-        else:
-            clf = en.GradientBoostingRegressor(alpha=0.9, criterion='friedman_mse', init=None,
-                              learning_rate=0.01, loss='ls', max_depth=8,
-                              max_features=None, max_leaf_nodes=None,
-                              min_impurity_decrease=0.0, min_impurity_split=None,
-                              min_samples_leaf=1, min_samples_split=2,
-                              min_weight_fraction_leaf=0.0, n_estimators=550,
-                              n_iter_no_change=None, presort='auto',
-                              random_state=None, subsample=1.0, tol=0.0001,
-                              validation_fraction=0.1, verbose=0, warm_start=False)
+        clf = en.GradientBoostingRegressor(**params)
         clf.fit(X, t, sample_weight=weights)
+        #os.rename('model.joblib', 'model.joblib.bk')
         jl.dump(clf, model_name)
         return clf
-
 
 @timer
 def train_svr(X, y, weights=None):
