@@ -75,13 +75,25 @@ def train(X, t, gridsearch=False, weights=None):
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
 #    X_cat = cat.fit_transform(X_cat)
     if gridsearch == True:
-        # Hyperparameter tuning
-        pass
-    clf = en.GradientBoostingRegressor(**params)
-    clf.fit(X, t, sample_weight=weights)
-    #os.rename('model.joblib', 'model.joblib.bk')
-    jl.dump(clf, model_name)
-    return clf
+        params = {
+            "n_estimators": [550],
+            "max_depth": [10,12],
+            "learning_rate": [0.01,0.03],
+            "loss": ["ls"],
+        }   # Hyperparameter tuning
+        clf = en.GradientBoostingRegressor()
+        cv = GridSearchCV(clf,params,cv=3, 
+                          n_jobs=4, verbose=1)
+        cv.fit(X,t)
+        #os.rename('model.joblib', 'model.joblib.bk')
+        jl.dump(cv, "cv_model_landsat_median_sds.joblib")
+        return cv 
+    else:
+        clf = en.GradientBoostingRegressor(**params)
+        clf.fit(X, t, sample_weight=weights)
+        #os.rename('model.joblib', 'model.joblib.bk')
+        jl.dump(clf, model_name)
+        return clf
 
 @timer
 def train_svr(X, y, weights=None):
