@@ -59,6 +59,8 @@ def extend_df_landsat(df, chunk_size=2):
 def batch_populater(a,b):
     """ Needs generalization to incorporate multiple data sets.
         Currently adds landsat data.
+        df is the source for points to be added to the target
+        db, which is the sink.
     """
     #pts = single_point_populater(
     #    df[0:1], landsat_prepare_method, landsat_aggregate_method, verbose=True)
