@@ -8,7 +8,7 @@
 """
 from sklearn import ensemble as en
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.svm import SVR
 import numpy as np
@@ -23,6 +23,7 @@ path = 'data/features_three_months_full.parquet' # 'data/vegetation_index_featur
 np.random.seed(42)
 w_dir = '.' # '/home/dario/_py/tree-cover' # 
 model_name = "model_sentinel_transform_stratify_huber.joblib" # "model_landsat_median_sds.joblib" # 
+
 
 do_train = True
 do_transform = True # logarithmic transform of y
@@ -47,10 +48,10 @@ def load_data(path, cols=None):
     df.dropna(inplace=True)
     df.drop_duplicates(inplace=True)
     df.reset_index(inplace=True)
-    t, X = df[target], df[cols]
+    t, X = df.tree_cover, df[cols]
     cat = X.columns[X.dtypes == "object"]
     X = pd.get_dummies(X,cat,drop_first=True)
-    cover_to_count = df.groupby(target).count().iloc[:,0].to_dict()
+    cover_to_count = df.groupby('tree_cover').count().iloc[:,0].to_dict()
     # t, X = sk.utils.shuffle(df.tree_cover, df[cols], random_state=1)
     # split = int(X.shape[0] * 0.9)
     # X_train, t_train = X[:split], t[:split]
@@ -65,6 +66,13 @@ def prep(X):
 
 @timer
 def train(X, t, gridsearch=False, weights=None):
+    params = {
+        "n_estimators": 550,
+        "max_depth": 8,
+        "min_samples_split": 3,
+        "learning_rate": 0.01,
+        "loss": "ls" # "huber", # 
+    }
 #    cat = OneHotEncoder()
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
 #    X_cat = cat.fit_transform(X_cat)
@@ -111,10 +119,11 @@ def train(X, t, gridsearch=False, weights=None):
                               n_iter_no_change=None, presort='auto',
                               random_state=None, subsample=1.0, tol=0.0001,
                               validation_fraction=0.1, verbose=0, warm_start=False)
+
         clf.fit(X, t, sample_weight=weights)
+        #os.rename('model.joblib', 'model.joblib.bk')
         jl.dump(clf, model_name)
         return clf
-
 
 @timer
 def train_svr(X, y, weights=None):
