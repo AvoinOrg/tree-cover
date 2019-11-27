@@ -19,18 +19,18 @@ import matplotlib.pyplot as plt
 from utils import timer
 
 # global params as I'm too lazy to build a CLI
-path =  'data/vegetation_index_features_aggregated_all.parquet' # 'data/features_three_months_improved.parquet' #  "data/df_empty_dummy.csv" # 
+path = 'data/features_three_months_full.parquet' # 'data/vegetation_index_features_aggregated.parquet' #  'data/features_three_months_improved.parquet' #  "data/df_empty_dummy.csv" # 
 np.random.seed(42)
 w_dir = '.' # '/home/dario/_py/tree-cover' # 
-model_name = "model_sentinel_monthly_agg_all.joblib" # "model_landsat_median_sds.joblib" # 
+model_name = "model_sentinel_transform_stratify_huber.joblib" # "model_landsat_median_sds.joblib" # 
 
 do_train = True
 do_transform = True # logarithmic transform of y
-do_scale_X = True # use a MinMaxScaler to bring the data into a range bewteen -1 and 1
+do_scale_X = False # use a MinMaxScaler to bring the data into a range bewteen -1 and 1
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
-do_stratify = False # only take an approximately equal amount for each tree-cover level into account
+do_stratify = True # only take an approximately equal amount for each tree-cover level into account
 method = 'boost' # 'svr' # 
-target= 'tree_cover' # 'land_use_category'
+target= 'tree_cover' # 'land_use_category' # 
 kernel = 'rbf' # for svr
 
 
@@ -68,6 +68,14 @@ def train(X, t, gridsearch=False, weights=None):
 #    cat = OneHotEncoder()
 #    X_num, X_cat = X.loc[:,X.dtypes!="object"], X.loc[:,X.dtypes=="object"]
 #    X_cat = cat.fit_transform(X_cat)
+    print(f'Now training {method} model for data {path} with parameters:')
+    print(f'do_transform = {do_transform}, do_scale_X = {do_scale_X}, do_weight = {do_weight}, do_stratify = {do_stratify}')
+    if do_train and os.path.exists(model_name):
+        print(f'Warning: model {model_name} already exists and will be overwritten after training!')
+    else:
+        print('Model will be saved as:', model_name)
+        # warn if present!!!
+    
     if gridsearch == True:
         params = {
             "n_estimators": [550],
@@ -95,11 +103,11 @@ def train(X, t, gridsearch=False, weights=None):
                               validation_fraction=0.1, verbose=0, warm_start=False)
         else:
             clf = en.GradientBoostingRegressor(alpha=0.9, criterion='friedman_mse', init=None,
-                              learning_rate=0.01, loss='ls', max_depth=8,
+                              learning_rate=0.1, loss='huber', max_depth=5, # rate 0.01, depth 8
                               max_features=None, max_leaf_nodes=None,
                               min_impurity_decrease=0.0, min_impurity_split=None,
-                              min_samples_leaf=1, min_samples_split=2,
-                              min_weight_fraction_leaf=0.0, n_estimators=550,
+                              min_samples_leaf=1, min_samples_split=3, # split 2
+                              min_weight_fraction_leaf=0.0, n_estimators=200,
                               n_iter_no_change=None, presort='auto',
                               random_state=None, subsample=1.0, tol=0.0001,
                               validation_fraction=0.1, verbose=0, warm_start=False)
@@ -150,7 +158,7 @@ def stratify(cnt_dict, X, y, scale=4):
     return X.loc[indices], y.loc[indices]
     
 
-def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train):
+def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train, second_run=False):
     """ calculates RMSE, R^2, mean and median error; prints & plots error percentiles """
     if do_transform:
         # bt means back transformed
@@ -174,22 +182,33 @@ def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train):
     
     rmse = round(np.sqrt(mean_squared_error(y_t_bt, p_bt)), 4)
     r_squared = round(r2_score(y_t_bt, p_bt, sample_weight=w_test),4) 
+    if second_run:
+        print('\n--- Run on data removed by stratification ---')
     print(f"For model: ", model_name)
     print(f"Test set - RMSE: {rmse}, R^2: {r_squared}")
     
     # overfitting?
     rmse_train = round(np.sqrt(mean_squared_error(y_train_bt, y_train_pred_bt, sample_weight=w_train)),4)
     r_sq_train = round(r2_score(y_train_bt, y_train_pred_bt, sample_weight=w_train), 4)
-    print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
+    if not second_run:
+        print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
     
     median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
     mean = sum(np.sqrt(diff**2))/len(diff)
     for i in range(0,100, 10):
-        print(str(i)+"% percentile : " +str(sorted(np.sqrt(diff**2))[int((len(diff))*i/100)]))
+        print(str(i)+"% percentile : " +str(sorted(round(np.sqrt(diff**2)), 3)[int((len(diff))*i/100)]))
     print(f'Median error: {median:4f}, Mean error: {mean:4f}')
     plt.plot(sorted(np.sqrt(y_t_bt)**2))
     plt.plot(sorted(np.sqrt(diff**2)))
     plt.show()
+    
+    # how is it performing on the different tree cover estimates?
+    for i in range(0,10):
+        denom = len(diff[np.logical_and((i/10 + 0.1) > y_t_bt, (i/10) < y_t_bt)])
+        if denom == 0:
+            continue
+        nom = sum(np.sqrt(diff[np.logical_and((i/10 + 0.1) > y_t_bt, (i/10) < y_t_bt)]**2))
+        print(str(i)+' '+str(round(nom/denom, 3)*100))
 
 
 def main():
@@ -286,9 +305,11 @@ def main():
             p_r_bt = p_rest
             y_r_bt = y_rest
         
-        rmse_train = round(np.sqrt(mean_squared_error(y_r_bt, p_r_bt)),4)
-        r_sq_train = round(r2_score(y_r_bt, p_r_bt), 4)
-        print(f"On left out data - RMSE: {rmse_train}, R^2: {r_sq_train}")
+        # p, y_train_pred, y_test, y_train
+        evaluate(p_r_bt, y_train_pred , y_r_bt, y_train, w_test, w_train, True)
+        #rmse_train = round(np.sqrt(mean_squared_error(y_r_bt, p_r_bt)),4)
+        #r_sq_train = round(r2_score(y_r_bt, p_r_bt), 4)
+        #print(f"On left out data - RMSE: {rmse_train}, R^2: {r_sq_train}")
 
     # print sorted feature importances
     if method == 'boost':
