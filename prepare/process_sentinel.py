@@ -8,11 +8,9 @@ Methods to process the data retrieved by `fetch_sentinel.py`. You need to adjust
 import pandas as pd
 import sqlite3 as lite
 from pathlib import Path
-from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
 from utils import timer 
-import prepare.image_reshaper as ir
 
 # you need to compile the included SQLite extension and then specify its location here.
 # gcc -g -fPIC -shared extension-functions.c -o libsqlitefunctions.so -lm
@@ -25,12 +23,7 @@ fetch_cols = ["id", "longitude", "latitude",  "B1", "B2", "B3", "B4", "B5", "B6"
 
 funs = ['min', 'max', 'avg', 'stdev', 'median', 'lower_quartile', 'upper_quartile']
 
-# initialise scaler manually.
-ndvi_scaler = MinMaxScaler(feature_range=(0,255))
-ndvi_scaler.scale_=255/2
-ndvi_scaler.data_min_=-1,
-ndvi_scaler.data_max=1
-ndvi_scaler.min_=255/2
+
 
 date_ranges = (('2018-12-01', '2019-02-28'), ('2019-03-01', '2019-05-31'), ('2019-06-01', '2019-08-31'))
 # if wanting to look at diff wet/dry for the data that I have
@@ -248,7 +241,6 @@ def compute_monthly_features():
     print(f'Completed feature extraction.')
 
     
-    
 def gen_temporal_fetch_stmt_and_headers(use_all = False):
     """ fetches the statistics over the image region based on the monthly medians + the calculated indices """
     # blue: B2, green: B3, red: B4, NIR: B8
@@ -274,6 +266,16 @@ def gen_temporal_fetch_stmt_and_headers(use_all = False):
 
 def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
     """ Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1] """ 
+    import prepare.image_reshaper as ir
+    from sklearn.preprocessing import MinMaxScaler
+    
+    # initialise scaler manually.
+    ndvi_scaler = MinMaxScaler(feature_range=(0,255))
+    ndvi_scaler.scale_=255/2
+    ndvi_scaler.data_min_=-1,
+    ndvi_scaler.data_max=1
+    ndvi_scaler.min_=255/2
+
     mode = 'interp'
     params = ['nearest']
     size = [8,7]
@@ -308,15 +310,11 @@ def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
                 continue
             # convert into 8x7 if necessary
             reshaped = ir.reshape_image_array(test, mode, params, size)
-            img_row = prepare_img_for_svm(reshaped)
+            img_row = ndvi_scaler.inverse_transform(reshaped.reshape(1, 8*7*4))[0]
             full_df.iloc[i, 6:] = img_row
     print(f'{len(missing)} images are missing due to cloud filter: {missing}')
 
-def prepare_img_for_svm(img: np.array):
-    """ transforms the image into single values for each pixel in range [-1,1] """ 
-    return ndvi_scaler.inverse_transform(img.reshape(1, 8*7*4))[0]
 
-    
 # wet season & summer in OZ
 t_start = '2018-12-01'
 t_end = '2019-02-28'

@@ -17,16 +17,16 @@ import pandas as pd
 import os
 import joblib as jl
 import matplotlib.pyplot as plt
-from utils import timer, dict_from_kwargs
+from utils import timer
 
-#plt.rcParams["figure.figsize"] = (30,12)
-#plt.rcParams["font.size"] = 20
+plt.rcParams["figure.figsize"] = (30,12)
+plt.rcParams["font.size"] = 20
 
 # global params as I'm too lazy to build a CLI
 path = 'data/features_three_months_full.parquet' # 'data/features_three_months_improved.parquet' # 'data/vegetation_index_features_aggregated_all.parquet' # 'data/vegetation_index_features_aggregated.parquet' # "data/df_empty_dummy.csv" #   
 np.random.seed(42)
 w_dir = '.' # '/home/dario/_py/tree-cover' # 
-model_name = "model_sentinel_logtrans_stratified_mae_3months_dart_depth8_1000.joblib" #  "model_sentinel_logtrans_stratified_mae_allveg_lgbm_depth12_2000.joblib" # 
+model_name = "model_sentinel_logtrans_stratified_huber_3months_2000_60leaves.joblib" #  "model_sentinel_logtrans_stratified_mae_allveg_lgbm_depth12_2000.joblib" # 
 
 
 do_train = True
@@ -35,7 +35,7 @@ do_stratify = True # only take an approximately equal amount for each tree-cover
 use_lgbm = True # faster than sklearn
 target= 'tree_cover' # 'land_use_category' # 
 
-
+do_gridsearch = False
 do_scale_X = False # use a MinMaxScaler to bring the data into a range bewteen -1 and 1 -> no need.
 do_weight = False # assign a weight to each feature s.t. those occuring less frequent will have higher weights
 method = 'boost' # 'svr' # 
@@ -55,7 +55,8 @@ def load_data(path, cols=None):
     elif path.endswith('.parquet'):
         df = pd.read_parquet(path)
     if cols is None:
-        cols = [col for col in df.columns if col not in set(bastin_cols)]
+        cols = [col for col in df.columns if col not in set(bastin_cols) and not col.startswith('veg_pc')]
+        
     df.dropna(inplace=True)
     df.drop_duplicates(inplace=True)
     df.reset_index(inplace=True)
@@ -110,11 +111,10 @@ def train(X, t, gridsearch=False, weights=None):
             # best for depth 8: {'min_data_in_leaf': 50, 'n_estimators': 1000, 'num_leaves': 64}
             # run with mae: {'min_data_in_leaf': 60, 'n_estimators': 2000, 'num_leaves': 32}
             param_grid = {
-                'num_leaves': [2**(depth-2)], #[2**(depth-3), 2**(depth-2), 2**(depth-1)],
-                'min_child_samples': [50], # [40, 50, 60],
-                'n_estimators': [2000, 3000, 4000]
+                'num_leaves': [16, 24, 32, 40, 50, 62, 80] #[2**(depth-3), 2**(depth-2), 2**(depth-1)],
             }
-            clf = lgb.LGBMRegressor(objective=objective, boosting_type='dart', alpha=0.9, learning_rate=0.1, max_depth=depth, random_state=42, subsample=1.0)
+            clf = lgb.LGBMRegressor(objective=objective, boosting_type='dart', alpha=0.9, learning_rate=0.1, 
+                                    random_state=42, subsample=1.0, n_estimators=2000, min_child_samples=50)
             cv = GridSearchCV(clf, param_grid, n_jobs=2, cv=3, verbose=1, scoring='neg_mean_absolute_error')
         else:
             params = {
@@ -143,14 +143,13 @@ def train(X, t, gridsearch=False, weights=None):
             clf = en.GradientBoostingClassifier(**kwargs) if not use_lgbm else lgb.LGBMClassifier(**kwargs)
         else:
             if use_lgbm:
-                depth = 8
                 kwargs = dict(
                         objective=objective, # regression, regression_l1, ...
                         boosting_type='dart',
                         alpha=0.9,
-                        learning_rate=0.1, max_depth=depth, num_leaves=2**(depth-2),
+                        learning_rate=0.1, max_depth=-1, num_leaves=60,
                         min_child_samples=50,
-                        n_estimators=5000,
+                        n_estimators=2000,
                         random_state=42, subsample=1.0)
             else:
                 kwargs = dict(alpha=0.9, criterion='friedman_mse', init=None,
@@ -300,7 +299,7 @@ def main():
 
     if do_train:
         if method == 'boost':
-            model = train(X_train, y_train, weights=w_train, gridsearch=False)
+            model = train(X_train, y_train, weights=w_train, gridsearch=do_gridsearch)
         elif method == 'svr':
             model = train_svr(X_train, y_train, weights=w_train)
         p, model = predict(X_test, model=model)
