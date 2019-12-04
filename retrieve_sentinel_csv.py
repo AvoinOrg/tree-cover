@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """
    -- input: A CSV file with the (at least) the columns `longitude`, `latitude` and `Aridity_zone`
+   -- libsqlite: Path to the compiled `libsqlitefunction.so`. 
+
+   Optional:
    -- output: A CSV file with these 3 columns + the required columns for the landsat predictor.
-   -- libsqlite: Path to the compiled `libsqlitefunction.so`. Only required if all fetched data should be written to an
-   SQLite DB for later analysis and feature engineering. Else, the features will be computed on the fly and directly be 
-   appended to the CSV.
+   -- db: sqlite db to which the data should be written
    
    This program fetches the raw data from Google Earth Engine and writes the necessary features into the output file.
    NOTE: It's smart to split the input data and run several instances in parallel (but you cannot write to the same db)
+   With chunk size 10, it can run on the smalles GoogleCloudCompute instance.
 """
 
 import ee
@@ -132,13 +134,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Retrieve the SENTINEL features for tree cover prediction')
     parser.add_argument('infile', metavar='INPUT', help='input file in .csv format')
     parser.add_argument('--output', default='features.csv', 
-                           help='output file path (default: features.csv)')
+                        help='output file path (default: features.csv)')
     parser.add_argument('--libsqlite', default='./libsqlitefunctions.so', 
-                           help='path to the compiled `libsqlitefunction.so`. Also required without raw feature storage.')
+                        help='path to the compiled `libsqlitefunction.so`. Also required without raw feature storage.')
     parser.add_argument('--db', default=None, 
-                           help='Specify the path to the sqlite database for raw feature retrieval (default: None, only save them in the memory before writing to CSV)')
+                        help='Specify the path to the sqlite database for raw feature retrieval (default: None, only save them in the memory before writing to CSV)')
+    parser.add_argument('--chunk', default=100, type=int, 
+                        help='Computes (and writes features) from the raw data in memory after fetching (default: 100) points')
 
     args=parser.parse_args()
-    fetch_data(args.infile, args.output, libsqlite=args.libsqlite, db=args.db)
+    fetch_data(args.infile, args.output, libsqlite=args.libsqlite, db=args.db, ch, write_chunk=args.chunk)
     
     

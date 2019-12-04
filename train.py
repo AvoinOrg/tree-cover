@@ -19,8 +19,8 @@ import joblib as jl
 import matplotlib.pyplot as plt
 from utils import timer
 
-plt.rcParams["figure.figsize"] = (30,12)
-plt.rcParams["font.size"] = 20
+#plt.rcParams["figure.figsize"] = (30,12)
+#plt.rcParams["font.size"] = 20
 
 # global params as I'm too lazy to build a CLI
 path = 'data/features_three_months_full.parquet' # 'data/features_three_months_improved.parquet' # 'data/vegetation_index_features_aggregated_all.parquet' # 'data/vegetation_index_features_aggregated.parquet' # "data/df_empty_dummy.csv" #   
@@ -29,7 +29,7 @@ w_dir = '.' # '/home/dario/_py/tree-cover' #
 model_name = "model_sentinel_logtrans_stratified_huber_3months_2000_60leaves.joblib" #  "model_sentinel_logtrans_stratified_mae_allveg_lgbm_depth12_2000.joblib" # 
 
 
-do_train = True
+do_train = False
 do_transform = True # logarithmic transform of y
 do_stratify = True # only take an approximately equal amount for each tree-cover level into account
 use_lgbm = True # faster than sklearn
@@ -170,7 +170,6 @@ def train(X, t, gridsearch=False, weights=None):
         return clf
 
 
-
 @timer
 def train_svr(X, y, weights=None):
     """ 
@@ -292,6 +291,8 @@ def main():
     X_train, X_test, y_train, y_test = train_test_split(X, t, 
                                                         test_size=0.2,
                                                         random_state=42)
+    
+    # df.loc[X_train.sample(500).index].to_csv('testset_part.csv', index=False)
     w_train, w_test = None, None
     if do_weight:
         w_train = get_weights(cnt_dict, y_train, t.size)
