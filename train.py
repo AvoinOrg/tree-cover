@@ -23,10 +23,10 @@ from utils import timer
 #plt.rcParams["font.size"] = 20
 
 # global params as I'm too lazy to build a CLI
-path = 'data/features_three_months_full.parquet' # 'data/features_three_months_improved.parquet' # 'data/vegetation_index_features_aggregated_all.parquet' # 'data/vegetation_index_features_aggregated.parquet' # "data/df_empty_dummy.csv" #   
+path = 'data/vegetation_index_features_aggregated_all.parquet' # 'data/features_three_months_full.parquet' # 'data/features_three_months_improved.parquet' # 'data/vegetation_index_features_aggregated.parquet' # "data/df_empty_dummy.csv" #   
 np.random.seed(42)
 w_dir = '.' # '/home/dario/_py/tree-cover' # 
-model_name = "model_sentinel_logtrans_stratified_huber_3months_2000_60leaves.joblib" #  "model_sentinel_logtrans_stratified_mae_allveg_lgbm_depth12_2000.joblib" # 
+model_name = "model_sentinel_logtrans_stratified_mae_allveg_lgbm_depth8_5000.joblib" #  "model_sentinel_logtrans_stratified_huber_3months_2000_60leaves.joblib" #  
 
 
 do_train = False
@@ -244,8 +244,7 @@ def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train, second_run=False
     # overfitting?
     rmse_train = round(np.sqrt(mean_squared_error(y_train_bt, y_train_pred_bt, sample_weight=w_train)),4)
     r_sq_train = round(r2_score(y_train_bt, y_train_pred_bt, sample_weight=w_train), 4)
-    if not second_run:
-        print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
+    print(f"Training set - RMSE: {rmse_train}, R^2: {r_sq_train}")
     
     median = sorted(np.sqrt(diff**2))[int(len(diff)/2)]
     mean = sum(np.sqrt(diff**2))/len(diff)
@@ -317,23 +316,16 @@ def main():
             t_full, X_full, cnt_dict, feat = load_data(path=path)
         else:
             t_full, X_full, cnt_dict, feat = load_data(path=path, cols=feat)
-        X_rest = X_full.loc[X_full.index.symmetric_difference(X.index)]
-        y_rest = t_full.loc[X_full.index.symmetric_difference(X.index)]
+        X_rest = X_full.loc[X_full.index.symmetric_difference(X_train.index)]
+        y_rest = t_full.loc[X_full.index.symmetric_difference(X_train.index)]
         if do_transform:
             y_rest[y_rest==0] = 0.0001
             y_rest[y_rest==1] = 0.9999
             y_rest = np.log(y_rest/(1-y_rest))
         p_rest, _ = predict(X_rest, model=model)
-        if do_transform:
-            # bt means back transformed
-            p_r_bt = 1/(1+np.exp(-p_rest))
-            y_r_bt = 1/(1+np.exp(-y_rest))
-        else:
-            p_r_bt = p_rest
-            y_r_bt = y_rest
-        
+
         # p, y_train_pred, y_test, y_train
-        evaluate(p_r_bt, y_train_pred , y_r_bt, y_train, w_test, w_train, True)
+        evaluate(p_rest, y_train_pred , y_rest, y_train, w_test, w_train, True)
         #rmse_train = round(np.sqrt(mean_squared_error(y_r_bt, p_r_bt)),4)
         #r_sq_train = round(r2_score(y_r_bt, p_r_bt), 4)
         #print(f"On left out data - RMSE: {rmse_train}, R^2: {r_sq_train}")

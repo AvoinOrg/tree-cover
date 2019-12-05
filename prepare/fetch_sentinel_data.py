@@ -36,7 +36,6 @@ def retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end):
         .filterDate(start, end)
         .filterBounds(GEOM)
         .cast(dict(zip(bands, band_types)), bands)
-        # .map(maskS2clouds)
         .getRegion(GEOM, 10))
     try:
         e = dataset.getInfo()

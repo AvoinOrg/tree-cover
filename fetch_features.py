@@ -155,7 +155,8 @@ def landsat_prepare_method(df, verbose=False):
     return df, info
 
 
-def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LANDSAT/LC08/C01/T1_SR", verbose=False):
+def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", 
+                 collection="LANDSAT/LC08/C01/T1_SR", verbose=False):
     """ Fetches data for a single point given by lon(gitude) and lat(itude).
         Returns a pandas dataframe.
     """
@@ -165,7 +166,6 @@ def single_fetch(lon, lat, start="2015-01-01", end="2015-12-31", collection="LAN
     GEOM = ee.Geometry.MultiPolygon([pt])
 
     dataset = ee.ImageCollection(collection).filterDate(start, end).filterBounds(GEOM).getRegion(GEOM, 30)
-    time.sleep(1)
     dataset = dataset.getInfo()
     dataset = pd.DataFrame(dataset[1:], columns=dataset[0])
     return dataset
