@@ -29,6 +29,7 @@ def retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end):
     appends to the dataframe of retrieved items (retrieved) and returns the next index and the current error counter
     """
     GEOM = ee.Geometry.Point([df["longitude"].iloc[i], df["latitude"].iloc[i]]).buffer(35).bounds()
+    print('fetching: ', [df["longitude"].iloc[i], df["latitude"].iloc[i]])
     dataset = (
         ee.ImageCollection(collection)
         .filterDate(start, end)
@@ -41,6 +42,7 @@ def retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end):
         fetched = pd.DataFrame(e[1:], columns=e[0])
         fetched["id"] = df.index[i]  # index in bastin_cleaned.csv
         fetched = clean_df(fetched)
+        print('For i=', i, 'retrieved data of shape:', fetched.shape)
         if retrieved is None:
             retrieved = fetched
         else:

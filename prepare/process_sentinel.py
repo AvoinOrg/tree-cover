@@ -7,7 +7,8 @@ import numpy as np
 # you need to compile the included SQLite extension and then specify its location here.
 # gcc -g -fPIC -shared extension-functions.c -o libsqlitefunctions.so -lm
 lib_extension_path = './libsqlitefunctions.so'
-bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
+
+# bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
 db_folder = 'data/sentinel/'
 val_cols = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9","B11", "B12"]
 csv_cols = ["id", "longitude", "latitude", "time", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA60"]
@@ -73,6 +74,7 @@ def compute_features(t_start, t_end, part=None):
     within the passed timeframe (as datestring 'YYYY-MM-DD'). Note that data is only available from ~2018-12-15 to
     2019-08-31. Currently used to extract the seasons within that timeframe.
     """
+    bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
     region_to_bounds = {}
     err_rows = []
     all_regs = pd.unique(bastin_db.dryland_assessment_region)
@@ -118,6 +120,7 @@ def compute_three_seasons_features():
     computes the features from the raw postgres data and saves them. The columns are named as the query function,
     but with a _0, _1, _2 appended.
     """
+    bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
     all_cols = []
     all_dfs = []
     for i, date_range in enumerate(date_ranges):
@@ -157,6 +160,7 @@ def compute_monthly_features():
     exports the vegetation index & band 1,5,9,12 - based features. Saves them both by month for the LSTM and aggregated
     for the GBR (min, max, median) in the hope it would pick up changes over the year from that.
     """
+    bastin_db = pd.read_csv('data/bastin_db_cleaned.csv')
     region_to_bounds = {}
     calc_all = True
     err_rows = []

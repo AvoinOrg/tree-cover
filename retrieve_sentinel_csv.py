@@ -59,21 +59,13 @@ def fetch_data(df, output, libsqlite, write_chunk=100):
         ee.Initialize()
         i = 0
         n = df.shape[0]
-        write_header = True
-        if os.path.exists(output):
-            i = pd.read_csv(output).shape[0]
-            write_header = False
-            print('Will continue from index', i)
-            
-        if write_chunk > n-i:
-            write_chunk=n-i-1
-            
-        new_cols = [f"{c}_{i}" for i, _ in enumerate(date_ranges) for c in columns]
+
+        new_cols = [f"{c}_{j}" for j, _ in enumerate(date_ranges) for c in columns]
         feature_df = df.reindex(df.columns.tolist() + new_cols, axis='columns', copy=True)
         used_cols = [c for c in feature_df.columns if not c.startswith('veg_pc')]
 
         if output is not None:
-            fetch_and_write_to_file(df, feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols, write_header)
+            fetch_and_write_to_file(df, feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols)
         else:
             return fetch_and_return(df, feature_df, i, n, feature_stmt, columns, con, used_cols)
 
@@ -81,19 +73,29 @@ def fetch_data(df, output, libsqlite, write_chunk=100):
 def fetch_and_return(df, feature_df, i, n, feature_stmt, columns, con, used_cols):
     err_cnt = 0
     retrieved = None
+    i_start = i
     while i < n:
         print('retrieving for i=', i)
         retrieved, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
-        if retrieved is not None:
-            retrieved.to_sql('sentinel', con, if_exists='append', index=False)
-            feature_df = compute_features(feature_df, feature_stmt, columns, i - write_chunk, i, start, end, con)
-            if err_cnt == 0:
-                i += 1
+        if err_cnt == 0:
+            i += 1
+    if retrieved is not None:
+        retrieved.to_sql('sentinel', con, if_exists='append', index=False)
+        feature_df = compute_features(feature_df, feature_stmt, columns, i_start, i, start, end, con)
 
     return feature_df[used_cols]
 
 
-def fetch_and_write_to_file(df,feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols, write_header):
+def fetch_and_write_to_file(df,feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols):
+    write_header = True
+    if os.path.exists(output):
+        i = pd.read_csv(output).shape[0]
+        write_header = False
+        print('Will continue from index', i)
+
+    if write_chunk > n - i:
+        write_chunk = n - i - 1
+
     err_cnt = 0
     retrieved = None
     i_start = i
@@ -136,12 +138,17 @@ def compute_features(feature_df, fetch_stmt, fetch_cols, idx_start, idx_end, t_s
             # inv_ids = con.execute("select distinct(id) from sentinel where strftime('%H:%M', time, 'unixepoch') in('23:59','00:00')").fetchall()
             # if len(inv_ids) > 0:
             #     raise(f'WARN: need to re-run again for ids around midnight: {inv_ids}')
-            curr_stmt = fetch_stmt.replace('?', str(tuple(range(idx_start, idx_end))), 1)
+            range_tuple = tuple(range(idx_start, idx_end))
+            if len(range_tuple) > 1:
+                curr_stmt = fetch_stmt.replace('?', str(range_tuple), 1)
+            else:
+                curr_stmt = fetch_stmt.replace('in ?', f'is {idx_start}')
             data_rows = con.execute(curr_stmt, (t_start, t_end)).fetchall()
             data_df = pd.DataFrame(data_rows).set_index([0],drop=True).round(5)
             feature_df.loc[data_df.index, curr_cols] = data_df.to_numpy()
 
         except Exception as e:
+            print('ERROR in retrieve_sentinel_csv.py -> compute_features')
             print(e)
             
     return feature_df
