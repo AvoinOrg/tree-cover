@@ -9,7 +9,7 @@
             -- Currently does not finish after fetching all the points.
                 Probably some inifinite loop.
         - Improve performance overall
-            -- currently raping pandas beauty 
+            -- currently hurting pandas beauty
                 b/c I used R the last 2 semesters X_X
         
 """

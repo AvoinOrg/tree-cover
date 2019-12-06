@@ -1,10 +1,6 @@
-""" Creates the boosting model based on the format in db.csv.
-    To-Do:
-        - Add gridsearch option for deeper training
-            -- Shallow training (ie best previous hyper parameters)
-                should be an option, currently those of the R model.
-            -- Deeper training with automatic hyperparameter optimiziation
-                should be available as well.
+"""
+model training. To be executed directly within this directory. Input data for the model must be specified via `path`.
+Among the other parameters, only do_train needs to be adjusted if the model should be retrained.
 """
 from sklearn import ensemble as en
 from sklearn.preprocessing import MinMaxScaler
@@ -18,7 +14,7 @@ import os
 import joblib as jl
 #import matplotlib.pyplot as plt
 
-from .utils import timer
+from sentinel import timer
 
 #plt.rcParams["figure.figsize"] = (30,12)
 #plt.rcParams["font.size"] = 20
