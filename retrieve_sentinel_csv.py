@@ -51,7 +51,8 @@ def fetch_sqlite(f_name, df):
 def fetch_data(infile, output, libsqlite, db=None, write_chunk=100):
     
     feature_stmt, columns = gen_fetch_stmt_and_headers()    
-    df = pd.read_csv(infile, usecols=["longitude", "latitude", "Aridity_zone"])
+    df = pd.read_csv(infile, usecols=["longitude", "latitude", "Aridity_zone", "tree_cover"])
+    df['plot_id'] = df.index
     
     if db is not None:
         fetch_sqlite(db, infile)
@@ -102,7 +103,7 @@ def fetch_data(infile, output, libsqlite, db=None, write_chunk=100):
                     pbar.update()
                     i+=1
     
-            if i % write_chunk != 0:
+            if retrieved is not None:
                 retrieved.to_sql('sentinel', con, if_exists='append', index=False)
                 feature_df=compute_features(feature_df, feature_stmt, columns, i//write_chunk*write_chunk, i, start, end, con)
                 with open(output, 'a') as f:
@@ -143,6 +144,6 @@ if __name__ == "__main__":
                         help='Computes (and writes features) from the raw data in memory after fetching (default: 100) points')
 
     args=parser.parse_args()
-    fetch_data(args.infile, args.output, libsqlite=args.libsqlite, db=args.db, ch, write_chunk=args.chunk)
+    fetch_data(args.infile, args.output, libsqlite=args.libsqlite, db=args.db, write_chunk=args.chunk)
     
     
