@@ -7,17 +7,18 @@
                 should be available as well.
 """
 from sklearn import ensemble as en
-from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.svm import SVR
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import os
 import joblib as jl
-import matplotlib.pyplot as plt
-from utils import timer
+#import matplotlib.pyplot as plt
+
+from .utils import timer
 
 #plt.rcParams["figure.figsize"] = (30,12)
 #plt.rcParams["font.size"] = 20
@@ -71,11 +72,6 @@ def load_data(path, cols=None):
         X = prep(X)
     
     cover_to_count = df.groupby('tree_cover').count().iloc[:,0].to_dict()
-    # t, X = sk.utils.shuffle(df.tree_cover, df[cols], random_state=1)
-    # split = int(X.shape[0] * 0.9)
-    # X_train, t_train = X[:split], t[:split]
-    # X_test, t_test = X[split:], t[split:]
-    # return X_train, t_train, X_test, t_test
     return t, X, cover_to_count, cols
 
 def prep(X):
@@ -144,7 +140,7 @@ def train(X, t, gridsearch=False, weights=None):
         else:
             if use_lgbm:
                 kwargs = dict(
-                        objective=objective, # regression, regression_l1, ...
+                        objective=objective,
                         boosting_type='dart',
                         alpha=0.9,
                         learning_rate=0.1, max_depth=-1, num_leaves=60,
@@ -165,7 +161,6 @@ def train(X, t, gridsearch=False, weights=None):
             clf = en.GradientBoostingRegressor(**kwargs) if not use_lgbm else lgb.LGBMRegressor(**kwargs)
 
         clf.fit(X, t, sample_weight=weights)
-        #os.rename('model.joblib', 'model.joblib.bk')
         jl.dump(clf, model_name)
         return clf
 
@@ -181,6 +176,7 @@ def train_svr(X, y, weights=None):
     jl.dump(svr, model_name)
     return svr
 
+
 def predict(X, model):
     # cat = OneHotEncoder()
     # X = cat.fit_transform(X)
@@ -193,12 +189,14 @@ def predict(X, model):
         p = model.predict(X)
     return p, model
 
+
 def get_weights(cnt_dict, vec, n_total):
     """ returns the weights according to the frequency in vec s.t. each value of vec has the same avg weight """
     weights = np.zeros(vec.size)
     for val, cnt in cnt_dict.items():
         weights[vec==val] = cnt/n_total
     return weights
+
 
 def stratify(cnt_dict, X, y, scale=4):
     """ return a subsample of X and y where each class only appears maximum `scale x the minimum count` """
@@ -251,9 +249,9 @@ def evaluate(p, y_train_pred, y_test, y_train, w_test, w_train, second_run=False
     for i in range(0,100, 10):
         print(str(i)+"% percentile : " +str(round(sorted(np.sqrt(diff**2))[int((len(diff))*i/100)], 3)))
     print(f'Median error: {median:4f}, Mean error: {mean:4f}')
-    plt.plot(sorted(np.sqrt(y_t_bt)**2))
-    plt.plot(sorted(np.sqrt(diff**2)))
-    plt.show()
+    #plt.plot(sorted(np.sqrt(y_t_bt)**2))
+    #plt.plot(sorted(np.sqrt(diff**2)))
+    #plt.show()
     
     # how is it performing on the different tree cover estimates?
     print('MAE on the different buckets:')
@@ -324,11 +322,7 @@ def main():
             y_rest = np.log(y_rest/(1-y_rest))
         p_rest, _ = predict(X_rest, model=model)
 
-        # p, y_train_pred, y_test, y_train
         evaluate(p_rest, y_train_pred , y_rest, y_train, w_test, w_train, True)
-        #rmse_train = round(np.sqrt(mean_squared_error(y_r_bt, p_r_bt)),4)
-        #r_sq_train = round(r2_score(y_r_bt, p_r_bt), 4)
-        #print(f"On left out data - RMSE: {rmse_train}, R^2: {r_sq_train}")
 
     # print sorted feature importances
     if method == 'boost':

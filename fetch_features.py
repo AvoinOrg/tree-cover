@@ -16,11 +16,6 @@
 import ee
 import os
 import pandas as pd
-import backoff
-import itertools
-import time
-
-# import elias_mail
 
 
 def not_in_db(df, db):

@@ -12,7 +12,6 @@
 
 import pandas as pd
 import os
-import itertools
 
 
 def transform(df):

@@ -2,15 +2,8 @@
     buckets. In this particular case I add the extraction from the 
     ee.ImageCollection("MODIS/006/MCD64A1") dataset.
 """
-import ee
-import os
 import pandas as pd
-import backoff
-import itertools
-import json
 
-# import pickle
-# import time
 
 # df = pd.read_csv("tree-cover/data/aam6527_Bastin_Database-S1.csv", sep=";")
 # df = pd.read_csv("data/bastin_db_cleaned.csv", sep=",")

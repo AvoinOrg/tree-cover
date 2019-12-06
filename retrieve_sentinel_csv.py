@@ -11,7 +11,6 @@
    NOTE: It's smart to split the input data and run several instances in parallel (but you cannot write to the same db)
    With chunk size 10, it can run on the smalles GoogleCloudCompute instance.
 """
-
 import ee
 import pandas as pd
 import os
@@ -19,10 +18,9 @@ import sqlite3 as lite
 import argparse
 from tqdm import tqdm
 
-
-from prepare.fetch_sentinel_data import retrieve_single_point, fetch_and_write_sqlite, stmt
-from prepare.process_sentinel import gen_fetch_stmt_and_headers, date_ranges
-from utils import timer
+from .prepare.fetch_sentinel_data import retrieve_single_point, fetch_and_write_sqlite, stmt
+from .prepare.process_sentinel import gen_fetch_stmt_and_headers, date_ranges
+from .utils import timer
 
 
 # Change these parameters to the next year if reusing exactly the same model or to the desired range
@@ -48,16 +46,11 @@ def fetch_sqlite(f_name, df):
 
 
 @timer
-def fetch_data(infile, output, libsqlite, db=None, write_chunk=100):
-    
+def fetch_data(df, output, libsqlite, write_chunk=100):
     feature_stmt, columns = gen_fetch_stmt_and_headers()    
-    df = pd.read_csv(infile, usecols=["longitude", "latitude", "Aridity_zone", "tree_cover"])
-    df['plot_id'] = df.index
-    
-    if db is not None:
-        fetch_sqlite(db, infile)
-        return
-    
+    if 'plot_id' not in df.columns:
+        df['plot_id'] = df.index
+
     with lite.connect(":memory:") as con:
         con.execute(stmt)
         con.enable_load_extension(True)
@@ -66,10 +59,7 @@ def fetch_data(infile, output, libsqlite, db=None, write_chunk=100):
         ee.Initialize()
         i = 0
         n = df.shape[0]
-        err_cnt = 0
-        retrieved = None
         write_header = True
-    
         if os.path.exists(output):
             i = pd.read_csv(output).shape[0]
             write_header = False
@@ -81,34 +71,60 @@ def fetch_data(infile, output, libsqlite, db=None, write_chunk=100):
         new_cols = [f"{c}_{i}" for i, _ in enumerate(date_ranges) for c in columns]
         feature_df = df.reindex(df.columns.tolist() + new_cols, axis='columns', copy=True)
         used_cols = [c for c in feature_df.columns if not c.startswith('veg_pc')]
-        start = i
-        
-        with tqdm(total=n) as pbar:
-            pbar.update(i)
-            
-            while i < n:
-                # print('retrieving for i=', i)
-                retrieved, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
-            
-                if retrieved is not None and i % write_chunk == 0 and i != start:
-                    print(f"{i}: writing fetched data to file.")
-                    retrieved.to_sql('sentinel', con, if_exists='append', index=False)
-                    feature_df=compute_features(feature_df, feature_stmt, columns, i-write_chunk, i, start, end, con)
-                    with open(output, 'a') as f:
-                        feature_df[used_cols][i-write_chunk:i].to_csv(f, header=write_header, index=False, mode='a')
-                        write_header = False
-                    retrieved = None
-                        
-                if err_cnt == 0:
-                    pbar.update()
-                    i+=1
-    
-            if retrieved is not None:
+
+        if output is not None:
+            fetch_and_write_to_file(df, feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols, write_header)
+        else:
+            return fetch_and_return(df, feature_df, i, n, feature_stmt, columns, con, used_cols)
+
+
+def fetch_and_return(df, feature_df, i, n, feature_stmt, columns, con, used_cols):
+    err_cnt = 0
+    retrieved = None
+    while i < n:
+        print('retrieving for i=', i)
+        retrieved, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
+        if retrieved is not None:
+            retrieved.to_sql('sentinel', con, if_exists='append', index=False)
+            feature_df = compute_features(feature_df, feature_stmt, columns, i - write_chunk, i, start, end, con)
+            if err_cnt == 0:
+                i += 1
+
+    return feature_df[used_cols]
+
+
+def fetch_and_write_to_file(df,feature_df, i, n, write_chunk, feature_stmt, columns, con, output, used_cols, write_header):
+    err_cnt = 0
+    retrieved = None
+    i_start = i
+
+    with tqdm(total=n) as pbar:
+        pbar.update(i)
+
+        while i < n:
+            # print('retrieving for i=', i)
+            retrieved, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
+
+            if retrieved is not None and i % write_chunk == 0 and i != i_start:
+                # print(f"{i}: writing fetched data to file.")
                 retrieved.to_sql('sentinel', con, if_exists='append', index=False)
-                feature_df=compute_features(feature_df, feature_stmt, columns, i//write_chunk*write_chunk, i, start, end, con)
+                feature_df = compute_features(feature_df, feature_stmt, columns, i - write_chunk, i, start, end, con)
                 with open(output, 'a') as f:
-                    feature_df[used_cols][i//write_chunk*write_chunk:i].to_csv(f, header=False, index=False, mode='a')
-        print('Features exported to ', output)
+                    feature_df[used_cols][i - write_chunk:i].to_csv(f, header=write_header, index=False, mode='a')
+                    write_header = False
+                retrieved = None
+
+            if err_cnt == 0:
+                pbar.update()
+                i += 1
+
+        if retrieved is not None:
+            retrieved.to_sql('sentinel', con, if_exists='append', index=False)
+            feature_df = compute_features(feature_df, feature_stmt, columns, i // write_chunk * write_chunk, i, start,
+                                          end, con)
+            with open(output, 'a') as f:
+                feature_df[used_cols][i // write_chunk * write_chunk:i].to_csv(f, header=False, index=False, mode='a')
+    print('Features exported to ', output)
 
             
 def compute_features(feature_df, fetch_stmt, fetch_cols, idx_start, idx_end, t_start, t_end, con):
@@ -144,6 +160,12 @@ if __name__ == "__main__":
                         help='Computes (and writes features) from the raw data in memory after fetching (default: 100) points')
 
     args=parser.parse_args()
-    fetch_data(args.infile, args.output, libsqlite=args.libsqlite, db=args.db, write_chunk=args.chunk)
+
+    if args.db is None:
+        df = pd.read_csv(args.infile, usecols=["longitude", "latitude", "Aridity_zone", "tree_cover"])
+        fetch_data(df, args.output, libsqlite=args.libsqlite, write_chunk=args.chunk)
+    else:
+        fetch_sqlite(args.db, args.infile)
+
     
     

@@ -1,16 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-Methods to process the data retrieved by `fetch_sentinel.py`. You need to adjust:
-    - location of compiled libsqlitefunctions.so
-    - location of bastin-db and where the sql-dbs to process are
-"""
-
 import pandas as pd
 import sqlite3 as lite
 from pathlib import Path
 import numpy as np
-
-from utils import timer 
 
 # you need to compile the included SQLite extension and then specify its location here.
 # gcc -g -fPIC -shared extension-functions.c -o libsqlitefunctions.so -lm
@@ -22,28 +14,8 @@ csv_cols = ["id", "longitude", "latitude", "time", "B1", "B2", "B3", "B4", "B5",
 fetch_cols = ["id", "longitude", "latitude",  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL"]    
 
 funs = ['min', 'max', 'avg', 'stdev', 'median', 'lower_quartile', 'upper_quartile']
-
-
-
 date_ranges = (('2018-12-01', '2019-02-28'), ('2019-03-01', '2019-05-31'), ('2019-06-01', '2019-08-31'))
-# if wanting to look at diff wet/dry for the data that I have
-"""
-region_to_wet = {    "Australia": 0,
-    "CentralAsia",
-    "EastSouthAmerica": 0,
-    "Europe",
-    "HornAfrica": 1,
-    "MiddleEast",
-    "NorthAmerica",
-    "NorthernAfrica": 0,
-    "Sahel",
-    "SouthernAfrica",
-    "SouthWestAsia",
-    "WestSouthAmerica": 0,}
-region_to_try = {}
-"""
 
-region_to_dry = {}
 
 def raw_df_to_db_db(df):
     """
@@ -140,7 +112,7 @@ def compute_features(t_start, t_end, part=None):
         print('Had errors for regions: ', err_rows)
     return ret_df
 
-@timer
+
 def compute_three_seasons_features():
     """
     computes the features from the raw postgres data and saves them. The columns are named as the query function,
@@ -179,7 +151,7 @@ def enhance_three_seasons_features():
             improved_df.loc[:,f'diff_{f}({b})'] = improved_df.apply(lambda row: np.abs(np.max(row[row_names])-np.min(row[row_names])), axis=1)
     improved_df.to_parquet('data/features_three_months_improved.parquet')    
     
-@timer
+
 def compute_monthly_features():
     """ 
     exports the vegetation index & band 1,5,9,12 - based features. Saves them both by month for the LSTM and aggregated
@@ -264,9 +236,11 @@ def gen_temporal_fetch_stmt_and_headers(use_all = False):
     stmt += " group by year_month, id, longitude, latitude) group by id, year_month"
     return stmt, headers
 
+"""
+# not used
 def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
-    """ Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1] """ 
-    import prepare.image_reshaper as ir
+    # Modifies the passed df to append the RGB and NDVI values for the 8x7 pixels, scaled to [-1,1]
+    import .image_reshaper as ir
     from sklearn.preprocessing import MinMaxScaler
     
     # initialise scaler manually.
@@ -318,12 +292,9 @@ def prepare_image_data(t_start, t_end, reg, idx_start, idx_end, full_df):
 # wet season & summer in OZ
 t_start = '2018-12-01'
 t_end = '2019-02-28'
-@timer
 def generate_RGB_ndvi_raw_data():
-    """ 
-    generates the df with the raw band values scaled to -1, 1 for logistic regression. The columns are named according
-    to the schema: {band name}_{x_index}_{y_index} where x and y start at the top left corner of the image.
-    """
+    #generates the df with the raw band values scaled to -1, 1 for logistic regression. The columns are named according
+    #to the schema: {band name}_{x_index}_{y_index} where x and y start at the top left corner of the image.
     bands = ["R", "G", "B", "ndvi"]
     col_names = []
     for lon_idx in range(8):
@@ -345,5 +316,5 @@ def generate_RGB_ndvi_raw_data():
         idx_end = region_to_bounds[reg][1]
         prepare_image_data(t_start, t_end, reg, idx_start, idx_end, ret_df)
     ret_df.to_parquet(db_folder + f'features_WetSeason_test.parquet')
-
+"""
         

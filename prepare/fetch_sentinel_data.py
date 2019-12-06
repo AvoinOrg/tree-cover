@@ -5,8 +5,6 @@ import time
 import os
 import sqlite3 as lite
 
-from utils import timer
-
 
 bands = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12", "AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB", "QA10", "QA20", "QA60"]
 band_types = ["uint32"]*14 + ["uint8"]*6 + ["uint32"]*3
@@ -60,7 +58,6 @@ def retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end):
     return retrieved, err_cnt
 
 
-@timer
 def fetch_and_write_sqlite(con, df, start, end, collection="COPERNICUS/S2_SR", i=0, i_max=None):
     """ 
     retrieves sentinel data and writes it to the SQLite DB
@@ -81,7 +78,7 @@ def fetch_and_write_sqlite(con, df, start, end, collection="COPERNICUS/S2_SR", i
     retrieved = None
     while i < i_max:
         
-        retrieved, i, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
+        retrieved, err_cnt = retrieve_single_point(retrieved, i, err_cnt, df, collection, start, end)
     
         if retrieved is not None and i % 10 == 0:
             if i % 100 == 0:

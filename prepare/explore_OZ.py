@@ -10,7 +10,7 @@ group by tree cover.
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from prepare.join_GEE import join_data_by_location
+from .join_GEE import join_data_by_location
 
 plt.rcParams["figure.figsize"] = (16, 12)
 plt.rcParams["font.size"] = 20
